@@ -40,10 +40,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python -m nbconvert --to notebook --execute --inplace notebooks\01_eda.ipynb
+python -m nbconvert --to notebook --execute --inplace notebooks\02_baseline_models.ipynb --ExecutePreprocessor.timeout=1800
+python -m pytest -v
 ```
 
 In VS Code, select `.venv\Scripts\python.exe` as the notebook kernel and open
-`notebooks/01_eda.ipynb`.
+`notebooks/01_eda.ipynb`, then `notebooks/02_baseline_models.ipynb`.
 
 ## Forecasting Definition
 
@@ -65,9 +67,11 @@ Predict the future electricity load of a selected client or meter.
 
 ### Output
 
-- Future electricity load value
-- Main horizon: 1 hour ahead
-- Extended horizon: 24 hours ahead
+- Future electricity load trajectories for `MT_252`.
+- Main horizon: 1 hour ahead, represented as 4 future 15-minute steps.
+- Extended horizon: 24 hours ahead, represented as 96 future 15-minute steps.
+- Chronological 70/15/15 train/validation/test splitting prevents target
+  vectors from crossing partition boundaries.
 
 ### Application Scenarios
 
@@ -108,6 +112,51 @@ weekend flag for this particular client.
 
 The machine-readable summary is saved at `reports/tables/eda_summary.csv`.
 
+## Multi-Step Baseline Results
+
+This stage predicts complete future trajectories for `MT_252`: 4 values for
+the next hour and 96 values for the next 24 hours. Features use only information
+available at or before the forecast origin, including lags `1, 4, 96, 192, 672`,
+shifted rolling windows `4, 96, 672`, calendar encodings, weekend flags, and
+Portugal holiday flags. The experiment uses chronological 70/15/15 splitting
+with target-boundary leakage prevention.
+
+Metrics are evaluated on the final chronological 15% test split. MAE, RMSE, and
+Endpoint_MAE are in kW; MAPE is percent. MAE and RMSE summarize all forecast
+steps, while Endpoint_MAE measures only the final step of each trajectory.
+
+| Horizon | Model | MAE (kW) | RMSE (kW) | MAPE (%) | Endpoint MAE (kW) |
+|---|---|---:|---:|---:|---:|
+| 1h | Naive | 16.97 | 27.09 | 10.38 | 21.56 |
+| 1h | Seasonal Naive | 15.40 | 24.91 | 9.44 | 15.39 |
+| 1h | Ridge | 16.24 | 22.76 | 10.03 | 20.18 |
+| 24h | Naive | 75.09 | 96.87 | 44.87 | 15.42 |
+| 24h | Seasonal Naive | 15.33 | 24.72 | 9.40 | 15.42 |
+| 24h | Ridge | 24.38 | 31.95 | 14.57 | 14.38 |
+
+Ridge is implemented as a direct multi-output model: one fitted estimator
+predicts every future step in the horizon. Alpha is selected on validation MAE
+only from `[0.1, 1.0, 10.0, 100.0]`; the selected model is then evaluated once
+on the test split without refitting on validation data.
+
+| Horizon | Selected Ridge Alpha | Validation MAE (kW) |
+|---|---:|---:|
+| 1h | 0.10 | 17.45 |
+| 24h | 0.10 | 26.06 |
+
+Seasonal Naive has the lowest overall MAE for both horizons. Ridge has lower
+1h RMSE than Naive and the lowest 24h Endpoint_MAE, but it does not beat
+Seasonal Naive on overall MAE. The per-step table shows Naive and Ridge errors
+increasing across the 1h horizon, while Seasonal Naive stays nearly flat across
+the four 1h steps. For 24h, Seasonal Naive stays nearly flat across lead times;
+Naive grows to its largest MAE around step 48 and then declines by the endpoint;
+Ridge starts with the lowest first-step MAE, rises through the middle of the
+horizon, and declines toward the final step.
+
+![Baseline trajectory forecasts](reports/figures/baseline_forecast_examples.png)
+
+![MAE by forecast lead](reports/figures/baseline_mae_by_step.png)
+
 ## Repository Structure
 
 ```text
@@ -121,16 +170,37 @@ energy-load-forecasting/
     processed/
   notebooks/
     01_eda.ipynb
+    02_baseline_models.ipynb
+    README.md
   src/
     __init__.py
+    baselines.py
     config.py
     data_loader.py
-    features.py
     evaluate.py
+    features.py
     forecasting.py
+  tests/
+    test_baselines.py
+    test_evaluate.py
+    test_features.py
+    test_forecasting.py
   reports/
     figures/
+      average_daily_pattern.png
+      baseline_forecast_examples.png
+      baseline_mae_by_step.png
+      week_load_pattern.png
+      weekday_vs_weekend_pattern.png
     tables/
+      baseline_metrics.csv
+      baseline_metrics_by_step.csv
+      eda_summary.csv
+      ridge_alpha_selection.csv
+  docs/
+    superpowers/
+      plans/
+      specs/
   GITHUB_GUIDE.md
 ```
 
@@ -144,12 +214,13 @@ energy-load-forecasting/
 - Visualize daily and weekly load patterns.
 - Identify peak and off-peak periods.
 
-### Week 2: Baseline Models
+### Week 2: Baseline Models (Completed)
 
-- Naive baseline.
-- Seasonal naive baseline.
-- Ridge Regression.
-- Time-series train/validation/test split.
+- Naive baseline completed.
+- Seasonal naive baseline completed.
+- Direct multi-output Ridge Regression completed.
+- Chronological 70/15/15 train/validation/test split completed with
+  target-boundary leakage prevention.
 
 ### Week 3: Machine Learning Models
 
