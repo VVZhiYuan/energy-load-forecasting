@@ -1,0 +1,2 @@
+meter_id,start,end,rows,mean_load_kw,std_load_kw,min_load_kw,max_load_kw,peak_hour,off_peak_hour,weekday_mean_kw,weekend_mean_kw,weekend_difference_pct,lag_1h_autocorrelation,lag_24h_autocorrelation
+MT_252,2011-01-01 00:15:00,2015-01-01,140256,232.6341845200853,82.16186062268754,1.91717791411043,467.944785276074,18,3,231.7588808902773,234.8183317812571,1.3201008216933152,0.8956198131429313,0.9537756722218459
