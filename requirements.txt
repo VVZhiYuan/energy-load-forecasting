@@ -7,3 +7,4 @@ ipykernel>=6.0.0
 nbconvert>=7.0.0
 plotly>=5.15.0
 holidays>=0.50
+pytest>=8.0.0
