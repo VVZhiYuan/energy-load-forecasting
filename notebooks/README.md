@@ -1,12 +1,9 @@
 # Notebooks
 
-Run notebooks in order:
+Run notebooks in this order:
 
-1. `01_eda.ipynb` - Load the dataset and understand load patterns.
+1. `01_eda.ipynb`: data quality, representative meter, and load patterns.
+2. `02_baseline_models.ipynb`: 4-step and 96-step trajectory baselines.
 
-Future notebooks:
-
-2. `02_baseline_models.ipynb`
-3. `03_ml_models.ipynb`
-4. `04_robustness_analysis.ipynb`
-
+Select `.venv\Scripts\python.exe` as the VS Code notebook kernel. Raw data must
+exist at `data/raw/LD2011_2014.txt`.
