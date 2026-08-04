@@ -9,6 +9,8 @@ import pandas as pd
 from joblib import Parallel, delayed
 from lightgbm import LGBMRegressor, early_stopping, log_evaluation
 
+from src.evaluate import mae
+
 
 @dataclass(frozen=True)
 class LightGBMCandidate:
@@ -20,6 +22,13 @@ class LightGBMCandidate:
     n_estimators: int
     min_child_samples: int
     reg_lambda: float
+
+
+DEFAULT_LIGHTGBM_CANDIDATES = (
+    LightGBMCandidate("small", 15, 0.05, 300, 40, 1.0),
+    LightGBMCandidate("medium", 31, 0.05, 400, 20, 0.1),
+    LightGBMCandidate("large", 63, 0.03, 500, 20, 0.1),
+)
 
 
 @dataclass(frozen=True)
@@ -131,3 +140,76 @@ def fit_direct_lightgbm(
         feature_names=tuple(X_train.columns),
         candidate=candidate,
     )
+
+
+def select_lightgbm_candidate(
+    X_train: pd.DataFrame,
+    y_train: pd.DataFrame,
+    X_val: pd.DataFrame,
+    y_val: pd.DataFrame,
+    candidates=DEFAULT_LIGHTGBM_CANDIDATES,
+    parallel_jobs: int = -1,
+) -> tuple[DirectLightGBMForecaster, pd.DataFrame]:
+    """Select the declared LightGBM candidate using validation MAE only."""
+
+    candidates = tuple(candidates)
+    if not candidates:
+        raise ValueError("candidates must not be empty.")
+
+    best_forecaster = None
+    best_score = np.inf
+    rows = []
+    for candidate in candidates:
+        forecaster = fit_direct_lightgbm(
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            candidate,
+            parallel_jobs=parallel_jobs,
+        )
+        score = mae(y_val, forecaster.predict(X_val))
+        rows.append(
+            {
+                "candidate": candidate.name,
+                "num_leaves": candidate.num_leaves,
+                "learning_rate": candidate.learning_rate,
+                "n_estimators": candidate.n_estimators,
+                "min_child_samples": candidate.min_child_samples,
+                "reg_lambda": candidate.reg_lambda,
+                "validation_MAE": score,
+            }
+        )
+        if score < best_score:
+            best_score = score
+            best_forecaster = forecaster
+
+    results = pd.DataFrame(rows)
+    results["selected"] = results["candidate"].eq(best_forecaster.candidate.name)
+    return best_forecaster, results
+
+
+def aggregate_gain_importance(
+    forecaster: DirectLightGBMForecaster,
+) -> pd.DataFrame:
+    """Aggregate and normalize gain importance across forecast-step models."""
+
+    gains = np.vstack(
+        [
+            model.booster_.feature_importance(importance_type="gain")
+            for model in forecaster.models
+        ]
+    )
+    raw_gain = gains.sum(axis=0)
+    total = raw_gain.sum()
+    normalized = raw_gain / total if total > 0 else np.zeros_like(raw_gain)
+    result = pd.DataFrame(
+        {
+            "feature": forecaster.feature_names,
+            "raw_gain": raw_gain,
+            "normalized_gain": normalized,
+        }
+    ).sort_values(["normalized_gain", "feature"], ascending=[False, True])
+    result = result.reset_index(drop=True)
+    result["rank"] = np.arange(1, len(result) + 1)
+    return result

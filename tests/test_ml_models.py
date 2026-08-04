@@ -2,9 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src import ml_models
 from src.ml_models import (
+    DirectLightGBMForecaster,
+    aggregate_gain_importance,
     LightGBMCandidate,
     fit_direct_lightgbm,
+    select_lightgbm_candidate,
 )
 
 
@@ -106,3 +110,83 @@ def test_direct_lightgbm_is_reproducible():
     )
 
     np.testing.assert_allclose(first.predict(X_val), second.predict(X_val))
+
+
+class FakeForecaster:
+    def __init__(self, candidate, prediction):
+        self.candidate = candidate
+        self._prediction = prediction
+
+    def predict(self, features):
+        return np.full((len(features), 2), self._prediction, dtype=float)
+
+
+def test_candidate_selection_uses_validation_mae(monkeypatch):
+    index = pd.date_range("2024-01-01", periods=8, freq="15min")
+    X = pd.DataFrame({"load": np.arange(8, dtype=float)}, index=index)
+    y = pd.DataFrame(np.ones((8, 2)), index=index)
+    candidates = (
+        LightGBMCandidate("small", 3, 0.1, 3, 2, 0.0),
+        LightGBMCandidate("medium", 5, 0.1, 3, 2, 0.0),
+    )
+
+    def fake_fit(X_train, y_train, X_val, y_val, candidate, parallel_jobs):
+        prediction = 3.0 if candidate.name == "small" else 1.0
+        return FakeForecaster(candidate, prediction)
+
+    monkeypatch.setattr(ml_models, "fit_direct_lightgbm", fake_fit)
+    selected, results = select_lightgbm_candidate(
+        X, y, X, y, candidates=candidates, parallel_jobs=1
+    )
+
+    assert selected.candidate.name == "medium"
+    assert results.loc[results["selected"], "candidate"].item() == "medium"
+
+
+def test_candidate_selection_breaks_ties_by_declared_order(monkeypatch):
+    index = pd.date_range("2024-01-01", periods=8, freq="15min")
+    X = pd.DataFrame({"load": np.arange(8, dtype=float)}, index=index)
+    y = pd.DataFrame(np.ones((8, 2)), index=index)
+    candidates = (
+        LightGBMCandidate("first", 3, 0.1, 3, 2, 0.0),
+        LightGBMCandidate("second", 5, 0.1, 3, 2, 0.0),
+    )
+
+    def fake_fit(X_train, y_train, X_val, y_val, candidate, parallel_jobs):
+        return FakeForecaster(candidate, 1.0)
+
+    monkeypatch.setattr(ml_models, "fit_direct_lightgbm", fake_fit)
+    selected, _ = select_lightgbm_candidate(
+        X, y, X, y, candidates=candidates, parallel_jobs=1
+    )
+
+    assert selected.candidate.name == "first"
+
+
+class FakeBooster:
+    def __init__(self, gains):
+        self._gains = np.asarray(gains, dtype=float)
+
+    def feature_importance(self, importance_type):
+        assert importance_type == "gain"
+        return self._gains
+
+
+class FakeModel:
+    def __init__(self, gains):
+        self.booster_ = FakeBooster(gains)
+
+
+def test_gain_importance_contains_and_normalizes_every_feature():
+    candidate = LightGBMCandidate("smoke", 3, 0.1, 3, 2, 0.0)
+    forecaster = DirectLightGBMForecaster(
+        models=(FakeModel([3.0, 1.0]), FakeModel([1.0, 1.0])),
+        feature_names=("load", "hour"),
+        candidate=candidate,
+    )
+
+    importance = aggregate_gain_importance(forecaster)
+
+    assert set(importance["feature"]) == {"load", "hour"}
+    assert importance["normalized_gain"].sum() == pytest.approx(1.0)
+    assert importance.iloc[0]["rank"] == 1
