@@ -41,11 +41,13 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 python -m nbconvert --to notebook --execute --inplace notebooks\01_eda.ipynb
 python -m nbconvert --to notebook --execute --inplace notebooks\02_baseline_models.ipynb --ExecutePreprocessor.timeout=1800
+python -m nbconvert --to notebook --execute --inplace notebooks\03_ml_models.ipynb --ExecutePreprocessor.timeout=3600
 python -m pytest -v
 ```
 
 In VS Code, select `.venv\Scripts\python.exe` as the notebook kernel and open
-`notebooks/01_eda.ipynb`, then `notebooks/02_baseline_models.ipynb`.
+`notebooks/01_eda.ipynb`, `notebooks/02_baseline_models.ipynb`, then
+`notebooks/03_ml_models.ipynb`.
 
 ## Forecasting Definition
 
@@ -157,6 +159,66 @@ horizon, and declines toward the final step.
 
 ![MAE by forecast lead](reports/figures/baseline_mae_by_step.png)
 
+## Interpretable Machine Learning Results
+
+Week 3 adds direct per-step LightGBM forecasting for both horizons. The model
+uses one LightGBM regressor per forecast lead, so the 1h task fits 4 models and
+the 24h task fits 96 models. Candidate selection is performed only on the
+chronological validation split; the selected candidate is then evaluated once on
+the held-out test split.
+
+Metrics below are measured on the final chronological 15% test split. MAE,
+RMSE, and Endpoint_MAE are in kW; MAPE and improvement are percentages.
+LightGBM improvement is measured against Seasonal Naive overall MAE, where a
+positive value means lower MAE than Seasonal Naive and a negative value means
+higher MAE.
+
+| Horizon | Model | MAE (kW) | RMSE (kW) | MAPE (%) | Endpoint MAE (kW) | LightGBM improvement vs Seasonal Naive |
+|---|---|---:|---:|---:|---:|---:|
+| 1h | Naive | 16.97 | 27.09 | 10.38 | 21.56 | - |
+| 1h | Seasonal Naive | 15.40 | 24.91 | 9.44 | 15.39 | - |
+| 1h | Ridge | 16.24 | 22.76 | 10.03 | 20.18 | - |
+| 1h | LightGBM | 12.69 | 18.21 | 8.87 | 13.46 | +17.56% |
+| 24h | Naive | 75.09 | 96.87 | 44.87 | 15.42 | - |
+| 24h | Seasonal Naive | 15.33 | 24.72 | 9.40 | 15.42 | - |
+| 24h | Ridge | 24.38 | 31.95 | 14.57 | 14.38 | - |
+| 24h | LightGBM | 18.09 | 26.74 | 12.26 | 14.65 | -18.04% |
+
+| Horizon | Selected LightGBM Candidate | num_leaves | learning_rate | n_estimators | min_child_samples | reg_lambda | Validation MAE (kW) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 1h | medium | 31 | 0.05 | 400 | 20 | 0.10 | 10.98 |
+| 24h | small | 15 | 0.05 | 300 | 40 | 1.00 | 13.78 |
+
+LightGBM is the measured overall-MAE winner for the 1h horizon with 12.69 kW,
+improving 17.56% over Seasonal Naive. Seasonal Naive remains the measured
+overall-MAE winner for the 24h horizon with 15.33 kW; the 24h LightGBM model is
+18.04% worse than Seasonal Naive on overall MAE, although its endpoint MAE is
+slightly lower than Seasonal Naive.
+
+Gain importance and SHAP summaries are interpretability diagnostics, not causal
+evidence. The 1h LightGBM gain table is dominated by `current_load`
+(normalized gain 0.68), with time-of-day and short lag features next. The 24h
+gain table is led by `hour_cos` and `hour_sin` (normalized gains 0.34 and
+0.30), followed by daily rolling load context and recent load. The SHAP plots
+show similar non-causal associations: near-term forecast steps lean heavily on
+current load, while longer 24h leads place more weight on time-of-day signals,
+rolling demand levels, and lagged load features.
+
+The Week 3 implementation lives in `notebooks/03_ml_models.ipynb`,
+`src/ml_models.py`, and `tests/test_ml_models.py`. Machine-readable LightGBM
+outputs are saved at `reports/tables/ml_model_metrics.csv`,
+`reports/tables/ml_metrics_by_step.csv`,
+`reports/tables/lgbm_parameter_search.csv`, and
+`reports/tables/lgbm_feature_importance.csv`.
+
+![LightGBM trajectory forecasts](reports/figures/lgbm_forecast_examples.png)
+
+![LightGBM MAE by forecast lead](reports/figures/lgbm_mae_by_step.png)
+
+![LightGBM gain feature importance](reports/figures/lgbm_feature_importance.png)
+
+![LightGBM SHAP summaries](reports/figures/lgbm_shap_summary.png)
+
 ## Repository Structure
 
 ```text
@@ -171,6 +233,7 @@ energy-load-forecasting/
   notebooks/
     01_eda.ipynb
     02_baseline_models.ipynb
+    03_ml_models.ipynb
     README.md
   src/
     __init__.py
@@ -180,15 +243,21 @@ energy-load-forecasting/
     evaluate.py
     features.py
     forecasting.py
+    ml_models.py
   tests/
     test_baselines.py
     test_evaluate.py
     test_features.py
     test_forecasting.py
+    test_ml_models.py
   reports/
     figures/
       average_daily_pattern.png
       baseline_forecast_examples.png
+      lgbm_feature_importance.png
+      lgbm_forecast_examples.png
+      lgbm_mae_by_step.png
+      lgbm_shap_summary.png
       baseline_mae_by_step.png
       week_load_pattern.png
       weekday_vs_weekend_pattern.png
@@ -196,6 +265,10 @@ energy-load-forecasting/
       baseline_metrics.csv
       baseline_metrics_by_step.csv
       eda_summary.csv
+      lgbm_feature_importance.csv
+      lgbm_parameter_search.csv
+      ml_metrics_by_step.csv
+      ml_model_metrics.csv
       ridge_alpha_selection.csv
   docs/
     superpowers/
@@ -222,11 +295,14 @@ energy-load-forecasting/
 - Chronological 70/15/15 train/validation/test split completed with
   target-boundary leakage prevention.
 
-### Week 3: Machine Learning Models
+### Week 3: Machine Learning Models (Completed)
 
-- Random Forest.
-- XGBoost or LightGBM.
-- Feature importance analysis.
+- Direct per-step LightGBM forecasters completed for 1h and 24h horizons.
+- Validation-only LightGBM candidate selection completed for each horizon.
+- Test-set comparison completed against Naive, Seasonal Naive, and Ridge
+  baselines.
+- Gain-based feature importance completed and exported.
+- SHAP summary diagnostics completed for selected forecast leads.
 
 ### Week 4-5: Deep Learning Models
 
