@@ -1,0 +1,7 @@
+horizon,candidate,num_leaves,learning_rate,n_estimators,min_child_samples,reg_lambda,validation_MAE,selected
+1h,small,15,0.05,300,40,1.0,11.005781265087984,False
+1h,medium,31,0.05,400,20,0.1,10.982307688373242,True
+1h,large,63,0.03,500,20,0.1,11.013353229098406,False
+24h,small,15,0.05,300,40,1.0,13.779313778925223,True
+24h,medium,31,0.05,400,20,0.1,13.875817647421837,False
+24h,large,63,0.03,500,20,0.1,14.006556796764853,False
