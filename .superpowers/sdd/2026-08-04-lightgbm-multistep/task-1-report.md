@@ -237,3 +237,59 @@ tests/test_ml_models.py::test_direct_lightgbm_is_reproducible PASSED     [100%]
 ### Fix Round 1 Concerns
 
 - None. Focused and full test outputs are warning-free.
+
+## Fix Round 2
+
+### What Changed
+
+- Raised the dependency floor in `requirements.txt` from `lightgbm>=4.3.0` to `lightgbm>=4.7.0`.
+- Kept the LightGBM 4.7-only `eval_X`/`eval_y` fit call unchanged.
+
+### Covering Test File
+
+- `tests/test_ml_models.py`
+- Full regression suite
+
+### Commands
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip show lightgbm
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider tests\test_ml_models.py -v
+.\.venv\Scripts\python.exe -m pytest -p no:cacheprovider -v
+```
+
+### Versions
+
+- `lightgbm` installed version: `4.7.0`
+- `shap` installed version: `0.52.0`
+
+### Outputs
+
+`pip show lightgbm`
+
+```text
+Name: lightgbm
+Version: 4.7.0
+Summary: LightGBM Python-package
+Home-page: https://github.com/lightgbm-org/LightGBM
+License-Expression: MIT
+Location: C:\Users\clt\Documents\Codex\2026-08-03\lie\work\energy-load-forecasting-lightgbm\.venv\Lib\site-packages
+Requires: narwhals, numpy, scipy
+```
+
+Focused pytest:
+
+```text
+============================== 7 passed in 1.93s ==============================
+```
+
+Full pytest:
+
+```text
+============================= 23 passed in 2.14s ==============================
+```
+
+### Fix Round 2 Concerns
+
+- None. The resolved LightGBM version satisfies the new minimum and both test runs are warning-free.
