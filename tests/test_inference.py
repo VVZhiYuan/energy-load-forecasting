@@ -210,19 +210,43 @@ def test_lightgbm_winner_refits_point_and_quantiles_on_all_labeled_origins(
     )
 
 
+@pytest.mark.parametrize(
+    "errors,expected_validation_winner,expected_test_winner",
+    [
+        pytest.param(
+            {
+                "Naive": (1.0, 10.0),
+                "Seasonal Naive": (2.0, 3.0),
+                "Ridge": (3.0, 2.0),
+                "LightGBM": (4.0, 0.0),
+            },
+            "Naive",
+            "LightGBM",
+            id="naive-validation-lightgbm-test",
+        ),
+        pytest.param(
+            {
+                "Naive": (2.0, 0.0),
+                "Seasonal Naive": (3.0, 4.0),
+                "Ridge": (0.0, 8.0),
+                "LightGBM": (4.0, 2.0),
+            },
+            "Ridge",
+            "Naive",
+            id="ridge-validation-naive-test",
+        ),
+    ],
+)
 def test_orchestration_uses_identical_origins_and_validation_only_selection(
     monkeypatch,
+    errors,
+    expected_validation_winner,
+    expected_test_winner,
 ):
     loaded = make_loaded()
     horizon = 4
     targets = make_multistep_targets(loaded.series, horizon)
     captured = {model: [] for model in ("Naive", "Seasonal Naive", "Ridge", "LightGBM")}
-    errors = {
-        "Naive": (1.0, 10.0),
-        "Seasonal Naive": (2.0, 3.0),
-        "Ridge": (3.0, 2.0),
-        "LightGBM": (4.0, 0.0),
-    }
 
     def scored_prediction(model, index):
         captured[model].append(index.copy())
@@ -243,9 +267,17 @@ def test_orchestration_uses_identical_origins_and_validation_only_selection(
         def __init__(self, model, candidate=None):
             self.model = model
             self.candidate = candidate
+            self.refitted = False
             self.named_steps = {"ridge": SimpleNamespace(alpha=1.0)}
 
+        def fit(self, X_all, y_all):
+            assert X_all.index.equals(y_all.index)
+            self.refitted = True
+            return self
+
         def predict(self, features):
+            if self.refitted:
+                return np.full((len(features), horizon), 25.0)
             return scored_prediction(self.model, features.index)
 
     def fake_select_ridge(X_train, y_train, X_val, y_val, alphas=(0.1, 1.0, 10.0, 100.0)):
@@ -280,8 +312,8 @@ def test_orchestration_uses_identical_origins_and_validation_only_selection(
         run.model_comparison["test_mae"].idxmin(), "model"
     ]
     selected = run.model_comparison.loc[run.model_comparison["selected"]].iloc[0]
-    assert validation_winner == "Naive"
-    assert test_winner == "LightGBM"
+    assert validation_winner == expected_validation_winner
+    assert test_winner == expected_test_winner
     assert selected["model"] == validation_winner
     assert run.summary["selected_model"] == validation_winner
 
