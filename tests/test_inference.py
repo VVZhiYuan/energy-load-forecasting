@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -207,3 +208,161 @@ def test_lightgbm_winner_refits_point_and_quantiles_on_all_labeled_origins(
         run.forecast[["p10", "p50", "p90"]],
         np.tile([1.0, 2.0, 3.0], (horizon, 1)),
     )
+
+
+def test_orchestration_uses_identical_origins_and_validation_only_selection(
+    monkeypatch,
+):
+    loaded = make_loaded()
+    horizon = 4
+    targets = make_multistep_targets(loaded.series, horizon)
+    captured = {model: [] for model in ("Naive", "Seasonal Naive", "Ridge", "LightGBM")}
+    errors = {
+        "Naive": (1.0, 10.0),
+        "Seasonal Naive": (2.0, 3.0),
+        "Ridge": (3.0, 2.0),
+        "LightGBM": (4.0, 0.0),
+    }
+
+    def scored_prediction(model, index):
+        captured[model].append(index.copy())
+        error = errors[model][len(captured[model]) - 1]
+        return targets.loc[index].to_numpy() + error
+
+    def fake_naive(current_load, requested_horizon):
+        assert requested_horizon == horizon
+        if isinstance(current_load, pd.Series):
+            return scored_prediction("Naive", current_load.index)
+        return np.full((len(current_load), horizon), 25.0)
+
+    def fake_seasonal(series, origins, requested_horizon, season_length=96):
+        assert requested_horizon == horizon
+        return scored_prediction("Seasonal Naive", origins)
+
+    class IndexedForecaster:
+        def __init__(self, model, candidate=None):
+            self.model = model
+            self.candidate = candidate
+            self.named_steps = {"ridge": SimpleNamespace(alpha=1.0)}
+
+        def predict(self, features):
+            return scored_prediction(self.model, features.index)
+
+    def fake_select_ridge(X_train, y_train, X_val, y_val, alphas=(0.1, 1.0, 10.0, 100.0)):
+        return IndexedForecaster("Ridge"), pd.DataFrame()
+
+    def fake_fit_lightgbm(
+        X_train, y_train, X_val, y_val, candidate, parallel_jobs=-1
+    ):
+        return IndexedForecaster("LightGBM", candidate)
+
+    monkeypatch.setattr("src.inference.naive_forecast", fake_naive)
+    monkeypatch.setattr("src.inference.seasonal_naive_forecast", fake_seasonal)
+    monkeypatch.setattr("src.inference.select_ridge_alpha", fake_select_ridge)
+    monkeypatch.setattr("src.inference.fit_direct_lightgbm", fake_fit_lightgbm)
+
+    run = run_latest_forecast(
+        loaded,
+        horizon_label="1h",
+        holiday_country=None,
+        search=False,
+        parallel_jobs=1,
+    )
+
+    validation_indexes = [captured[model][0] for model in captured]
+    test_indexes = [captured[model][1] for model in captured]
+    assert all(index.equals(validation_indexes[0]) for index in validation_indexes[1:])
+    assert all(index.equals(test_indexes[0]) for index in test_indexes[1:])
+    assert run.summary["selected_model"] == "Naive"
+    selected = run.model_comparison.loc[run.model_comparison["selected"]].iloc[0]
+    assert selected["model"] == "Naive"
+    assert run.model_comparison.loc[
+        run.model_comparison["test_mae"].idxmin(), "model"
+    ] == "LightGBM"
+
+
+def test_non_lightgbm_winner_uses_validation_residual_quantiles(monkeypatch):
+    loaded = make_loaded()
+    horizon = 4
+    targets = make_multistep_targets(loaded.series, horizon)
+    operational_point = np.array([10.0, 20.0, 30.0, 40.0])
+    captured = {"quantile_calls": 0, "residuals": None}
+
+    def fake_naive(current_load, requested_horizon):
+        return targets.loc[current_load.index].to_numpy() + 50.0
+
+    def fake_seasonal(series, origins, requested_horizon, season_length=96):
+        return targets.loc[origins].to_numpy() + 40.0
+
+    class RidgeForecaster:
+        def __init__(self, validation_index):
+            count = len(validation_index)
+            self.validation_index = validation_index
+            self.residuals = np.column_stack(
+                [
+                    np.linspace(-4.0, 4.0, count),
+                    np.linspace(0.0, 6.0, count),
+                    np.full(count, -2.0),
+                    np.linspace(-1.0, 5.0, count),
+                ]
+            )
+            self.refitted = False
+            self.named_steps = {"ridge": SimpleNamespace(alpha=1.0)}
+            captured["residuals"] = self.residuals
+
+        def fit(self, X_all, y_all):
+            assert X_all.index.equals(y_all.index)
+            self.refitted = True
+            return self
+
+        def predict(self, features):
+            if self.refitted:
+                return np.tile(operational_point, (len(features), 1))
+            if features.index.equals(self.validation_index):
+                return targets.loc[features.index].to_numpy() - self.residuals
+            return targets.loc[features.index].to_numpy() + 20.0
+
+    class BadLightGBMForecaster:
+        def __init__(self, candidate):
+            self.candidate = candidate
+
+        def predict(self, features):
+            return targets.loc[features.index].to_numpy() + 30.0
+
+    def fake_select_ridge(X_train, y_train, X_val, y_val, alphas=(0.1, 1.0, 10.0, 100.0)):
+        return RidgeForecaster(X_val.index), pd.DataFrame()
+
+    def fake_fit_lightgbm(
+        X_train, y_train, X_val, y_val, candidate, parallel_jobs=-1
+    ):
+        return BadLightGBMForecaster(candidate)
+
+    def forbidden_quantile_fit(*args, **kwargs):
+        captured["quantile_calls"] += 1
+        raise AssertionError("quantile LightGBM must not run for a Ridge winner")
+
+    monkeypatch.setattr("src.inference.naive_forecast", fake_naive)
+    monkeypatch.setattr("src.inference.seasonal_naive_forecast", fake_seasonal)
+    monkeypatch.setattr("src.inference.select_ridge_alpha", fake_select_ridge)
+    monkeypatch.setattr("src.inference.fit_direct_lightgbm", fake_fit_lightgbm)
+    monkeypatch.setattr(
+        "src.inference.fit_direct_quantile_lightgbm", forbidden_quantile_fit
+    )
+
+    run = run_latest_forecast(
+        loaded,
+        horizon_label="1h",
+        holiday_country=None,
+        search=False,
+        parallel_jobs=1,
+    )
+
+    residual_quantiles = np.quantile(
+        captured["residuals"], [0.1, 0.5, 0.9], axis=0
+    ).T
+    expected = operational_point[:, None] + residual_quantiles
+    assert run.summary["selected_model"] == "Ridge"
+    assert run.summary["interval_method"] == "residual_calibration"
+    assert captured["quantile_calls"] == 0
+    np.testing.assert_allclose(run.forecast["prediction"], operational_point)
+    np.testing.assert_allclose(run.forecast[["p10", "p50", "p90"]], expected)
