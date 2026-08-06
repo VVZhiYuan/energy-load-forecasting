@@ -29,7 +29,10 @@ def _read_forecast_table(path: Path) -> pd.DataFrame:
     except csv.Error as exc:
         raise ValueError(f"Could not detect a supported delimiter in {path}.") from exc
     decimal = "," if delimiter == ";" else "."
-    return pd.read_csv(path, sep=delimiter, decimal=decimal)
+    try:
+        return pd.read_csv(path, sep=delimiter, decimal=decimal)
+    except pd.errors.EmptyDataError as exc:
+        raise ValueError(f"Forecast input is empty: {path}") from exc
 
 
 def _validate_normalized_series(series: pd.Series) -> pd.Series:
@@ -61,8 +64,12 @@ def load_forecast_series(path: str | Path, meter: str | None = None) -> LoadedLo
         if numeric.notna().all() and np.array_equal(numeric.to_numpy(), np.arange(len(frame))):
             serialized_index_columns.append(column)
     frame = frame.drop(columns=serialized_index_columns)
+    if frame.empty:
+        raise ValueError(f"Forecast input is empty: {path}")
     names = {str(column).strip().lower(): column for column in frame.columns}
 
+    if {"timestamp", "load"}.issubset(names) and set(names) != {"timestamp", "load"}:
+        raise ValueError("ambiguous input: timestamp,load schema cannot contain extra columns.")
     if set(names) == {"timestamp", "load"}:
         timestamp_column = names["timestamp"]
         value_column = names["load"]
