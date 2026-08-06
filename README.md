@@ -224,6 +224,7 @@ outputs are saved at `reports/tables/ml_model_metrics.csv`,
 ```powershell
 python predict_latest.py --horizon 1h
 python predict_latest.py --horizon 24h
+python predict_latest.py --input data/raw/LD2011_2014.txt --meter MT_252 --horizon 1h
 python predict_latest.py --horizon 24h --search
 python predict_latest.py --input data/custom/hk_building.csv --holiday-country HK --horizon 24h
 ```
