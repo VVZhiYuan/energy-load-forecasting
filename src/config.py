@@ -13,6 +13,7 @@ PROCESSED_DATA_DIR = DATA_DIR / "processed"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 TABLES_DIR = REPORTS_DIR / "tables"
+PREDICTIONS_DIR = REPORTS_DIR / "predictions"
 
 RAW_DATA_FILENAME = "LD2011_2014.txt"
 DEFAULT_TARGET_HORIZON_1H = 4
@@ -38,4 +39,3 @@ TWENTY_FOUR_HOUR_CONFIG = ForecastConfig(
     target_horizon_steps=DEFAULT_TARGET_HORIZON_24H,
     forecast_label="24h",
 )
-
