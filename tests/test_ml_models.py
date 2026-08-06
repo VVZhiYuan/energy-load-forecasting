@@ -7,7 +7,9 @@ from src.ml_models import (
     DirectLightGBMForecaster,
     aggregate_gain_importance,
     LightGBMCandidate,
+    fit_direct_quantile_lightgbm,
     fit_direct_lightgbm,
+    refit_direct_lightgbm,
     select_lightgbm_candidate,
 )
 
@@ -110,6 +112,54 @@ def test_direct_lightgbm_is_reproducible():
     )
 
     np.testing.assert_allclose(first.predict(X_val), second.predict(X_val))
+
+
+def test_quantile_lightgbm_returns_requested_forecasters():
+    X_train, y_train, X_val, y_val = make_frames(4)
+    fitted = fit_direct_quantile_lightgbm(
+        X_train,
+        y_train,
+        X_val,
+        y_val,
+        candidate=SMOKE_CANDIDATE,
+        quantiles=(0.1, 0.5, 0.9),
+        parallel_jobs=1,
+    )
+
+    assert tuple(fitted) == (0.1, 0.5, 0.9)
+    assert all(model.predict(X_val).shape == (len(X_val), 4) for model in fitted.values())
+    assert fitted[0.1].objective == "quantile"
+    assert fitted[0.1].alpha == 0.1
+
+
+def test_refit_uses_every_supplied_origin():
+    X_train, y_train, X_val, y_val = make_frames(4)
+    fitted = fit_direct_lightgbm(
+        X_train, y_train, X_val, y_val, SMOKE_CANDIDATE, parallel_jobs=1
+    )
+    X_all = pd.concat([X_train, X_val])
+    y_all = pd.concat([y_train, y_val])
+
+    refitted = refit_direct_lightgbm(X_all, y_all, fitted, parallel_jobs=1)
+
+    assert refitted.predict(X_all.iloc[[-1]]).shape == (1, 4)
+    assert all(model.n_features_in_ == X_all.shape[1] for model in refitted.models)
+
+
+@pytest.mark.parametrize("quantiles", [(0.5, 0.1), (0.0, 0.5, 0.9), (0.1, 1.0)])
+def test_quantile_lightgbm_rejects_invalid_quantiles(quantiles):
+    X_train, y_train, X_val, y_val = make_frames(4)
+
+    with pytest.raises(ValueError, match="quantiles"):
+        fit_direct_quantile_lightgbm(
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            SMOKE_CANDIDATE,
+            quantiles=quantiles,
+            parallel_jobs=1,
+        )
 
 
 class FakeForecaster:
