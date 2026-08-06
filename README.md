@@ -219,6 +219,34 @@ outputs are saved at `reports/tables/ml_model_metrics.csv`,
 
 ![LightGBM SHAP summaries](reports/figures/lgbm_shap_summary.png)
 
+## Latest Forecast CLI
+
+```powershell
+python predict_latest.py --horizon 1h
+python predict_latest.py --horizon 24h
+python predict_latest.py --horizon 24h --search
+python predict_latest.py --input data/custom/hk_building.csv --holiday-country HK --horizon 24h
+```
+
+The command selects Naive, Seasonal Naive, Ridge, or LightGBM using validation
+MAE, reports untouched chronological test metrics, and then refits the selected
+family on all labeled history for the latest forecast. P10, P50, and P90 show
+lower, median, and upper empirical load scenarios; they are not guaranteed
+coverage bounds.
+
+![Latest 1-hour forecast](reports/predictions/MT_252/1h/forecast.png)
+
+![Latest 24-hour forecast](reports/predictions/MT_252/24h/forecast.png)
+
+The generated reports measured LightGBM as the validation winner for both
+horizons. LightGBM is not forced to win: on the untouched 24h test split,
+Seasonal Naive remains lower at 15.33 kW MAE versus LightGBM at 18.09 kW MAE.
+
+| Horizon | Selected model | Validation MAE (kW) | Untouched test MAE (kW) | Reports |
+|---|---|---:|---:|---|
+| 1h | LightGBM | 10.98 | 12.69 | [forecast.csv](reports/predictions/MT_252/1h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/1h/model_comparison.csv), [summary.json](reports/predictions/MT_252/1h/summary.json), [forecast.html](reports/predictions/MT_252/1h/forecast.html) |
+| 24h | LightGBM | 13.78 | 18.09 | [forecast.csv](reports/predictions/MT_252/24h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/24h/model_comparison.csv), [summary.json](reports/predictions/MT_252/24h/summary.json), [forecast.html](reports/predictions/MT_252/24h/forecast.html) |
+
 ## Repository Structure
 
 ```text

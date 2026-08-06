@@ -1,0 +1,40 @@
+{
+  "artifacts": {
+    "comparison_csv": "model_comparison.csv",
+    "forecast_csv": "forecast.csv",
+    "html": "forecast.html",
+    "png": "forecast.png",
+    "summary_json": "summary.json"
+  },
+  "forecast_origin": "2015-01-01T00:00:00",
+  "holiday_country": "PT",
+  "horizon": "24h",
+  "horizon_steps": 96,
+  "input_format": "wide",
+  "interval_method": "lightgbm_quantile",
+  "lightgbm_search": [],
+  "meter": "MT_252",
+  "negative_load_count": 0,
+  "observed_end": "2015-01-01T00:00:00",
+  "observed_start": "2011-01-01T00:15:00",
+  "package_versions": {
+    "matplotlib": "3.11.1",
+    "numpy": "2.3.5",
+    "pandas": "3.0.1",
+    "plotly": "6.9.0",
+    "python": "3.12.13"
+  },
+  "quantile_correction_count": 5,
+  "random_seed": 42,
+  "runtime_seconds": 265.3572045000037,
+  "search": false,
+  "selected_configuration": "small",
+  "selected_model": "LightGBM",
+  "source_label": "MT_252",
+  "split_rows": {
+    "all_labeled": 139488,
+    "test": 20943,
+    "train": 97411,
+    "validation": 20942
+  }
+}
