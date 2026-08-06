@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
         paths = write_forecast_artifacts(run, output_dir)
         print(f"[4/4] Complete: {paths['summary_json']}")
         return 0
-    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
