@@ -4,6 +4,82 @@ This portfolio project builds an AI-based forecasting pipeline for short-term el
 
 The project is designed for smart energy, green technology, and AI-driven energy management applications, especially for roles related to smart grid operation, building energy management, renewable energy operation, storage scheduling, and electricity price optimization.
 
+## Current Project Status
+
+This repository is currently a working portfolio prototype rather than a
+finished commercial energy platform.
+
+| Area | Status | What is implemented |
+|---|---|---|
+| Dataset and EDA | Complete | UCI data loading, meter selection, daily/weekly patterns, autocorrelation, and EDA artifacts |
+| Leakage-safe forecasting | Complete | Chronological 70/15/15 splits with target-boundary protection |
+| Baseline models | Complete | Naive, Seasonal Naive, and multi-output Ridge |
+| Interpretable ML | Complete | Direct per-step LightGBM, validation selection, feature importance, and SHAP diagnostics |
+| Latest forecast workflow | Complete | 1h/24h CLI, refit on all labeled history, P10/P50/P90 scenarios, CSV/PNG/HTML/JSON reports |
+| AI Agent layer | Scaffold complete | Disabled-by-default Provider interface, offline mock Agent, OpenAI-compatible API adapter, peak/uncertainty analysis |
+| Deep learning, robustness, dashboard | Planned | LSTM/GRU or Transformer, disturbance tests, storage optimization, and Streamlit interface |
+
+## System Architecture
+
+```text
+UCI or custom 15-minute load data
+             |
+             v
+  data_loader + feature engineering
+             |
+             v
+  chronological backtest and model selection
+             |
+             +--> Naive / Seasonal Naive / Ridge / LightGBM
+             |
+             v
+  refit selected model on all labeled history
+             |
+             v
+  point forecast + P10/P50/P90 scenarios
+             |
+             +--> CSV / PNG / interactive HTML / summary JSON
+             |
+             v
+  optional AI Agent
+  (explain peak, uncertainty, model comparison, and operations)
+```
+
+The numerical forecasting layer and the language-model layer are deliberately
+separated. The forecasting models produce auditable load values and metrics.
+The Agent consumes those results and generates interpretation or operational
+recommendations; it does not replace the evaluated time-series model or
+silently modify its predictions.
+
+## How The Code Is Organized
+
+- `src/data_loader.py`: validates wide UCI files and normalized custom CSVs.
+- `src/features.py`: builds calendar, holiday, lag, and rolling features.
+- `src/forecasting.py`: creates multi-step targets and leakage-safe splits.
+- `src/baselines.py`: implements Naive, Seasonal Naive, and Ridge baselines.
+- `src/ml_models.py`: fits direct LightGBM models and quantile intervals.
+- `src/inference.py`: selects the validation winner, refits it, and creates the latest forecast.
+- `src/reporting.py`: publishes machine-readable and visual forecast artifacts.
+- `src/ai_config.py` and `src/ai_provider.py`: define the disabled, mock, and OpenAI-compatible Agent providers.
+- `src/agent.py`: builds a JSON-safe context containing forecast peaks, uncertainty, model comparison, and recent load information.
+- `analyze_latest.py`: runs the Agent against a saved report without rerunning the numerical forecast.
+
+## End-To-End Example
+
+Run the numerical forecast first, then run the offline Agent analysis:
+
+```powershell
+python predict_latest.py --horizon 1h
+python analyze_latest.py --report-dir reports/predictions/MT_252/1h --provider mock
+```
+
+The first command creates the forecast and evaluation reports. The second
+creates `agent_analysis.json` from those saved reports. On the current UCI
+example, LightGBM wins validation for both horizons; however, the untouched
+24-hour test split still favors Seasonal Naive. That result is intentionally
+reported rather than hidden, because honest baseline comparison is part of the
+project's research value.
+
 ## Project Goals
 
 - Forecast future electricity load for a selected client or meter.
