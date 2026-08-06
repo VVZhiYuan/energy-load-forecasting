@@ -248,6 +248,45 @@ Seasonal Naive remains lower at 15.33 kW MAE versus LightGBM at 18.09 kW MAE.
 | 1h | LightGBM | 10.98 | 12.69 | [forecast.csv](reports/predictions/MT_252/1h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/1h/model_comparison.csv), [summary.json](reports/predictions/MT_252/1h/summary.json), [forecast.html](reports/predictions/MT_252/1h/forecast.html) |
 | 24h | LightGBM | 13.78 | 18.09 | [forecast.csv](reports/predictions/MT_252/24h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/24h/model_comparison.csv), [summary.json](reports/predictions/MT_252/24h/summary.json), [forecast.html](reports/predictions/MT_252/24h/forecast.html) |
 
+## Optional AI Agent Layer
+
+The project uses a hybrid design: LightGBM and the baseline models produce the
+numeric load forecast, while an optional Agent interprets the saved forecast,
+compares model results, identifies peak and uncertainty signals, and prepares
+energy-management recommendations. The Agent never overwrites the numeric
+forecast.
+
+The repository has no mandatory external AI service. The default provider is
+`disabled`, and `mock` is available for an offline portfolio demo:
+
+```powershell
+python analyze_latest.py --report-dir reports/predictions/MT_252/1h --provider disabled
+python analyze_latest.py --report-dir reports/predictions/MT_252/1h --provider mock
+```
+
+Both commands write `agent_analysis.json` into the report directory. The
+generated mock example is available at
+`reports/predictions/MT_252/1h/agent_analysis.json`.
+
+For a future hosted API, use an OpenAI-compatible Chat Completions endpoint.
+Keep the key in the process environment rather than the repository:
+
+```powershell
+$env:ENERGY_AI_PROVIDER = "openai-compatible"
+$env:ENERGY_AI_BASE_URL = "https://api.example.com/v1"
+$env:ENERGY_AI_MODEL = "your-model-name"
+$env:ENERGY_AI_API_KEY = "your-api-key"
+python analyze_latest.py --report-dir reports/predictions/MT_252/1h
+```
+
+For local deployment at home, the handoff target is Qwen3 served by Ollama or
+vLLM. Both expose OpenAI-compatible interfaces, so the project can keep the
+same client contract; only `ENERGY_AI_BASE_URL`, `ENERGY_AI_MODEL`, and
+`ENERGY_AI_API_KEY` change. Select the model size after checking the home
+desktop GPU memory. See the [Qwen quickstart](https://qwen.readthedocs.io/en/stable/getting_started/quickstart.html),
+[Ollama OpenAI compatibility guide](https://docs.ollama.com/api/openai-compatibility),
+and [vLLM OpenAI-compatible server guide](https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/).
+
 ## Repository Structure
 
 ```text
@@ -255,6 +294,9 @@ energy-load-forecasting/
   README.md
   requirements.txt
   .gitignore
+  .env.example
+  predict_latest.py
+  analyze_latest.py
   data/
     README.md
     raw/
@@ -273,6 +315,9 @@ energy-load-forecasting/
     features.py
     forecasting.py
     ml_models.py
+    ai_config.py
+    ai_provider.py
+    agent.py
   tests/
     test_baselines.py
     test_evaluate.py
