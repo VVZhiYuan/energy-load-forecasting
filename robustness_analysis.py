@@ -45,13 +45,25 @@ def _scenario_names(value: str | None) -> list[str] | None:
 
 def _render_chart(metrics: pd.DataFrame, destination: Path) -> None:
     non_clean = metrics.loc[metrics["scenario"] != "clean"].copy()
+    labels = {
+        "sensor_noise_5pct": "Sensor noise\n(5% std)",
+        "missing_blocks_1pct": "Missing blocks\n(1% of history)",
+        "spikes_1pct": "Abnormal spikes\n(1% of history)",
+        "distribution_shift_10pct": "Distribution shift\n(+10% recent load)",
+    }
+    values = non_clean["mae_degradation_pct"].to_numpy(dtype=float)
+    colors = ["#c84b31" if value > 0 else "#247b7b" for value in values]
     figure, axis = plt.subplots(figsize=(10, 5), constrained_layout=True)
-    axis.bar(non_clean["scenario"], non_clean["mae_degradation_pct"])
+    bars = axis.bar(
+        [labels.get(name, name) for name in non_clean["scenario"]],
+        values,
+        color=colors,
+    )
     axis.axhline(0.0, color="black", linewidth=0.8)
     axis.set_ylabel("MAE degradation versus clean (%)")
     axis.set_xlabel("Scenario")
     axis.set_title("Forecast robustness under data stress")
-    axis.tick_params(axis="x", rotation=25)
+    axis.bar_label(bars, fmt="%.1f%%", padding=3)
     figure.savefig(destination, dpi=160)
     plt.close(figure)
 
