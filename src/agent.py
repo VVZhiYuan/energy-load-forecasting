@@ -19,12 +19,17 @@ def _json_safe(value: object) -> object:
         return [_json_safe(item) for item in value]
     if isinstance(value, tuple):
         return [_json_safe(item) for item in value]
+    if value is None or value is pd.NA or value is pd.NaT:
+        return None
     if isinstance(value, pd.Timestamp):
         return value.isoformat()
     if isinstance(value, pd.Timedelta):
         return value.isoformat()
     if isinstance(value, np.generic):
-        return value.item()
+        item = value.item()
+        return None if pd.isna(item) else item
+    if isinstance(value, float) and np.isnan(value):
+        return None
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_json_safe(item) for item in value]
     if isinstance(value, Mapping):

@@ -1,5 +1,7 @@
+from dataclasses import asdict
 import json
 
+import numpy as np
 import pandas as pd
 
 from src.ai_config import AISettings
@@ -127,3 +129,20 @@ def test_analyze_forecast_delegates_to_configured_provider(monkeypatch):
     assert captured["context"].summary["selected_model"] == "Ridge"
     assert captured["context"].forecast_rows[0]["prediction"] == 16.0
     assert captured["context"].summary["peak_prediction"] == 18.5
+
+
+def test_build_agent_context_serializes_pandas_null_like_values():
+    run = make_run()
+    run.summary["holiday_country"] = pd.NA
+    run.summary["uncertainty_note"] = np.nan
+    run.forecast.loc[:, "point_model"] = pd.NA
+    run.forecast.loc[:, "interval_method"] = pd.NaT
+
+    context = build_agent_context(run)
+
+    payload = asdict(context)
+    assert json.dumps(payload)
+    assert payload["summary"]["holiday_country"] is None
+    assert payload["summary"]["uncertainty_note"] is None
+    assert payload["forecast_rows"][0]["point_model"] is None
+    assert payload["forecast_rows"][0]["interval_method"] is None
