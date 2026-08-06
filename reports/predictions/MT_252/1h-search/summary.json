@@ -1,0 +1,71 @@
+{
+  "artifacts": {
+    "comparison_csv": "model_comparison.csv",
+    "forecast_csv": "forecast.csv",
+    "html": "forecast.html",
+    "png": "forecast.png",
+    "summary_json": "summary.json"
+  },
+  "forecast_origin": "2015-01-01T00:00:00",
+  "holiday_country": "PT",
+  "horizon": "1h",
+  "horizon_steps": 4,
+  "input_format": "wide",
+  "interval_method": "lightgbm_quantile",
+  "lightgbm_search": [
+    {
+      "candidate": "small",
+      "learning_rate": 0.05,
+      "min_child_samples": 40,
+      "n_estimators": 300,
+      "num_leaves": 15,
+      "reg_lambda": 1.0,
+      "selected": false,
+      "validation_MAE": 11.005781265087984
+    },
+    {
+      "candidate": "medium",
+      "learning_rate": 0.05,
+      "min_child_samples": 20,
+      "n_estimators": 400,
+      "num_leaves": 31,
+      "reg_lambda": 0.1,
+      "selected": true,
+      "validation_MAE": 10.982307688373242
+    },
+    {
+      "candidate": "large",
+      "learning_rate": 0.03,
+      "min_child_samples": 20,
+      "n_estimators": 500,
+      "num_leaves": 63,
+      "reg_lambda": 0.1,
+      "selected": false,
+      "validation_MAE": 11.013353229098406
+    }
+  ],
+  "meter": "MT_252",
+  "negative_load_count": 0,
+  "observed_end": "2015-01-01T00:00:00",
+  "observed_start": "2011-01-01T00:15:00",
+  "package_versions": {
+    "matplotlib": "3.11.1",
+    "numpy": "2.3.5",
+    "pandas": "3.0.1",
+    "plotly": "6.9.0",
+    "python": "3.12.13"
+  },
+  "quantile_correction_count": 2,
+  "random_seed": 42,
+  "runtime_seconds": 33.35155279992614,
+  "search": true,
+  "selected_configuration": "medium",
+  "selected_model": "LightGBM",
+  "source_label": "MT_252",
+  "split_rows": {
+    "all_labeled": 139580,
+    "test": 21035,
+    "train": 97503,
+    "validation": 21034
+  }
+}
