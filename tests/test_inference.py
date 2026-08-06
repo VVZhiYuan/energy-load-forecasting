@@ -273,12 +273,17 @@ def test_orchestration_uses_identical_origins_and_validation_only_selection(
     test_indexes = [captured[model][1] for model in captured]
     assert all(index.equals(validation_indexes[0]) for index in validation_indexes[1:])
     assert all(index.equals(test_indexes[0]) for index in test_indexes[1:])
-    assert run.summary["selected_model"] == "Naive"
-    selected = run.model_comparison.loc[run.model_comparison["selected"]].iloc[0]
-    assert selected["model"] == "Naive"
-    assert run.model_comparison.loc[
+    validation_winner = run.model_comparison.loc[
+        run.model_comparison["validation_mae"].idxmin(), "model"
+    ]
+    test_winner = run.model_comparison.loc[
         run.model_comparison["test_mae"].idxmin(), "model"
-    ] == "LightGBM"
+    ]
+    selected = run.model_comparison.loc[run.model_comparison["selected"]].iloc[0]
+    assert validation_winner == "Naive"
+    assert test_winner == "LightGBM"
+    assert selected["model"] == validation_winner
+    assert run.summary["selected_model"] == validation_winner
 
 
 def test_non_lightgbm_winner_uses_validation_residual_quantiles(monkeypatch):
