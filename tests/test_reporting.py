@@ -2,7 +2,9 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
+import src.reporting as reporting
 from src.inference import ForecastRun
 from src.reporting import write_forecast_artifacts
 
@@ -60,3 +62,24 @@ def test_writes_complete_report_set(tmp_path):
     html = paths["html"].read_text(encoding="utf-8")
     assert "plotly" in html.lower()
     assert "Ridge" in html
+
+
+def test_rejects_truncated_staged_model_comparison(tmp_path, monkeypatch):
+    original_render_html = reporting._render_html
+
+    def render_then_truncate_comparison(*args, **kwargs):
+        original_render_html(*args, **kwargs)
+        destination = args[-1]
+        comparison = args[2]
+        pd.DataFrame(columns=comparison.columns).to_csv(
+            destination.parent / reporting.ARTIFACT_NAMES["comparison_csv"],
+            index=False,
+        )
+
+    monkeypatch.setattr(reporting, "_render_html", render_then_truncate_comparison)
+
+    with pytest.raises(
+        ValueError,
+        match="model_comparison.csv did not round-trip with the expected row count",
+    ):
+        write_forecast_artifacts(make_run(), tmp_path / "report")

@@ -201,8 +201,24 @@ def _validate_staged_artifacts(
         raise ValueError("forecast.csv did not round-trip with the expected row count")
     if list(forecast_readback.columns) != list(forecast.columns):
         raise ValueError("forecast.csv did not round-trip with the expected columns")
-    if list(comparison_readback.columns) != list(comparison.columns):
-        raise ValueError("model_comparison.csv did not round-trip with the expected columns")
+    expected_comparison = comparison.reset_index(drop=True)
+    if len(comparison_readback) != len(expected_comparison):
+        raise ValueError(
+            "model_comparison.csv did not round-trip with the expected row count"
+        )
+    try:
+        pd.testing.assert_frame_equal(
+            comparison_readback,
+            expected_comparison,
+            check_dtype=False,
+            check_exact=False,
+            rtol=1e-12,
+            atol=1e-12,
+        )
+    except AssertionError as exc:
+        raise ValueError(
+            "model_comparison.csv did not round-trip with the expected contents"
+        ) from exc
     if json.loads(
         (staging_dir / ARTIFACT_NAMES["summary_json"]).read_text(encoding="utf-8")
     ) != summary:
