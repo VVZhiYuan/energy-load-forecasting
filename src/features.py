@@ -29,26 +29,24 @@ def add_time_features(df: pd.DataFrame, timestamp_col: str = "timestamp") -> pd.
 def add_holiday_feature(
     df: pd.DataFrame,
     timestamp_col: str = "timestamp",
-    country: str = "PT",
+    country: str | None = "PT",
 ) -> pd.DataFrame:
-    """Add a holiday indicator using the dataset's country by default.
-
-    If the holidays package is unavailable or the region is unsupported,
-    the function returns the input with a zero holiday flag.
-    """
-
+    """Add a holiday indicator for an explicit country or disable it."""
     out = df.copy()
-    ts = pd.Series(pd.to_datetime(out[timestamp_col] if timestamp_col in out.columns else out.index), index=out.index)
-    holiday_flag = pd.Series(0, index=out.index, dtype=int)
-
-    if holidays is not None:
-        try:
-            holiday_calendar = holidays.country_holidays(country)
-            holiday_flag = ts.dt.date.map(lambda x: 1 if x in holiday_calendar else 0).astype(int)
-        except Exception:
-            holiday_flag = pd.Series(0, index=out.index, dtype=int)
-
-    out["is_holiday"] = holiday_flag.values if isinstance(holiday_flag, pd.Series) else holiday_flag
+    ts = pd.Series(
+        pd.to_datetime(out[timestamp_col] if timestamp_col in out.columns else out.index),
+        index=out.index,
+    )
+    if country is None:
+        out["is_holiday"] = 0
+        return out
+    if holidays is None:
+        raise RuntimeError("python-holidays is required when a holiday country is requested.")
+    supported = holidays.list_supported_countries()
+    if country.upper() not in supported:
+        raise ValueError(f"Unsupported holiday country: {country}")
+    calendar = holidays.country_holidays(country.upper())
+    out["is_holiday"] = ts.dt.date.map(lambda date: int(date in calendar)).to_numpy()
     return out
 
 
@@ -123,7 +121,7 @@ def add_cyclical_time_features(
     return out
 
 
-def build_baseline_features(series: pd.Series, country: str = "PT") -> pd.DataFrame:
+def build_baseline_features(series: pd.Series, country: str | None = "PT") -> pd.DataFrame:
     """Build origin-time features known at or before each forecast origin."""
 
     if not isinstance(series.index, pd.DatetimeIndex) or not series.index.is_monotonic_increasing:

@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
+import pytest
 
-from src.features import add_cyclical_time_features, build_baseline_features
+from src.features import add_cyclical_time_features, add_holiday_feature, build_baseline_features
 
 
 def make_series(length: int = 800) -> pd.Series:
@@ -53,3 +54,21 @@ def test_baseline_features_contain_only_expected_columns():
         "is_holiday",
     ]
     assert not features.isna().any().any()
+
+
+def test_disabled_holiday_country_produces_zero_flag():
+    frame = make_series(8).to_frame()
+    result = add_holiday_feature(frame, country=None)
+    assert result["is_holiday"].eq(0).all()
+
+
+def test_hong_kong_holiday_is_detected():
+    index = pd.DatetimeIndex(["2025-01-01 00:00:00"])
+    result = add_holiday_feature(pd.DataFrame({"load": [1.0]}, index=index), country="HK")
+    assert result["is_holiday"].item() == 1
+
+
+def test_unsupported_requested_country_fails():
+    frame = make_series(8).to_frame()
+    with pytest.raises(ValueError, match="holiday country"):
+        add_holiday_feature(frame, country="NOT_A_COUNTRY")
