@@ -17,7 +17,8 @@ finished commercial energy platform.
 | Interpretable ML | Complete | Direct per-step LightGBM, validation selection, feature importance, and SHAP diagnostics |
 | Latest forecast workflow | Complete | 1h/24h CLI, refit on all labeled history, P10/P50/P90 scenarios, CSV/PNG/HTML/JSON reports |
 | AI Agent layer | Scaffold complete | Disabled-by-default Provider interface, offline mock Agent, OpenAI-compatible API adapter, peak/uncertainty analysis |
-| Deep learning, robustness, dashboard | Planned | LSTM/GRU or Transformer, disturbance tests, storage optimization, and Streamlit interface |
+| Robustness analysis | Complete | Deterministic noise, missing-block, spike, and distribution-shift scenarios with clean-future evaluation |
+| Deep learning, optimization, dashboard | Planned | LSTM/GRU or Transformer, storage optimization, and Streamlit interface |
 
 ## System Architecture
 
@@ -59,6 +60,7 @@ silently modify its predictions.
 - `src/baselines.py`: implements Naive, Seasonal Naive, and Ridge baselines.
 - `src/ml_models.py`: fits direct LightGBM models and quantile intervals.
 - `src/inference.py`: selects the validation winner, refits it, and creates the latest forecast.
+- `src/robustness.py`: applies deterministic data stress scenarios and evaluates them against an untouched historical future.
 - `src/reporting.py`: publishes machine-readable and visual forecast artifacts.
 - `src/ai_config.py` and `src/ai_provider.py`: define the disabled, mock, and OpenAI-compatible Agent providers.
 - `src/agent.py`: builds a JSON-safe context containing forecast peaks, uncertainty, model comparison, and recent load information.
@@ -324,6 +326,50 @@ Seasonal Naive remains lower at 15.33 kW MAE versus LightGBM at 18.09 kW MAE.
 | 1h | LightGBM | 10.98 | 12.69 | [forecast.csv](reports/predictions/MT_252/1h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/1h/model_comparison.csv), [summary.json](reports/predictions/MT_252/1h/summary.json), [forecast.html](reports/predictions/MT_252/1h/forecast.html) |
 | 24h | LightGBM | 13.78 | 18.09 | [forecast.csv](reports/predictions/MT_252/24h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/24h/model_comparison.csv), [summary.json](reports/predictions/MT_252/24h/summary.json), [forecast.html](reports/predictions/MT_252/24h/forecast.html) |
 
+## Robustness Analysis
+
+Run deterministic stress tests against an untouched historical future:
+
+```powershell
+python robustness_analysis.py --horizon 1h
+python robustness_analysis.py --horizon 24h
+python robustness_analysis.py --horizon 1h --seed 7 --scenarios sensor_noise_5pct,missing_blocks_1pct
+```
+
+Each run truncates the time series before a known future horizon, perturbs only
+the observed prefix, runs the normal model-selection and refit pipeline, and
+scores the prediction against the clean future. The original dataset and the
+evaluation target are never modified. Outputs include a scenario-level CSV,
+JSON metadata, and a comparison chart.
+
+| Horizon | Scenario | MAE (kW) | RMSE (kW) | MAE change vs clean |
+|---|---|---:|---:|---:|
+| 1h | Clean | 3.34 | 3.59 | 0.0% |
+| 1h | Sensor noise (5% std) | 2.30 | 2.72 | -31.2% |
+| 1h | Missing one-hour blocks (1%) | 3.71 | 3.91 | +11.1% |
+| 1h | Abnormal spikes (1%) | 3.35 | 4.76 | +0.2% |
+| 1h | Recent distribution shift (+10%) | 9.53 | 10.69 | +185.4% |
+| 24h | Clean | 42.53 | 62.06 | 0.0% |
+| 24h | Sensor noise (5% std) | 44.01 | 63.23 | +3.5% |
+| 24h | Missing one-hour blocks (1%) | 42.36 | 61.89 | -0.4% |
+| 24h | Abnormal spikes (1%) | 42.13 | 62.29 | -0.9% |
+| 24h | Recent distribution shift (+10%) | 40.92 | 65.32 | -3.8% |
+
+The 1h result exposes a clear weakness to recent distribution shift. The 24h
+result is more mixed: distribution shift lowers MAE at this particular origin
+but raises RMSE and MAPE, so it is not evidence that the shift is beneficial.
+Likewise, the lower noisy 1h MAE is a single-origin outcome, not a general
+regularization claim. These experiments are reproducible sensitivity tests;
+multi-origin backtesting is the next step before making statistical robustness
+claims.
+
+![One-hour robustness analysis](reports/robustness/MT_252/1h/robustness_mae.png)
+
+![Twenty-four-hour robustness analysis](reports/robustness/MT_252/24h/robustness_mae.png)
+
+Machine-readable results: [1h metrics](reports/robustness/MT_252/1h/robustness_metrics.csv)
+and [24h metrics](reports/robustness/MT_252/24h/robustness_metrics.csv).
+
 ## Optional AI Agent Layer
 
 The project uses a hybrid design: LightGBM and the baseline models produce the
@@ -373,6 +419,7 @@ energy-load-forecasting/
   .env.example
   predict_latest.py
   analyze_latest.py
+  robustness_analysis.py
   data/
     README.md
     raw/
@@ -391,6 +438,7 @@ energy-load-forecasting/
     features.py
     forecasting.py
     ml_models.py
+    robustness.py
     ai_config.py
     ai_provider.py
     agent.py
@@ -400,6 +448,8 @@ energy-load-forecasting/
     test_features.py
     test_forecasting.py
     test_ml_models.py
+    test_robustness.py
+    test_robustness_cli.py
   reports/
     figures/
       average_daily_pattern.png
@@ -460,12 +510,13 @@ energy-load-forecasting/
 - GRU.
 - Optional Transformer model.
 
-### Week 6: Robustness Analysis
+### Week 6: Robustness Analysis (Completed)
 
-- Noise disturbance.
-- Missing data.
-- Abnormal peaks.
-- Distribution shift.
+- Deterministic noise disturbance completed.
+- Contiguous missing-data blocks with interpolation completed.
+- Abnormal peak injection completed.
+- Recent distribution shift completed.
+- Clean-future 1h and 24h sensitivity reports completed.
 
 ### Week 7: Dashboard
 
