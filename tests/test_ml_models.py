@@ -128,8 +128,9 @@ def test_quantile_lightgbm_returns_requested_forecasters():
 
     assert tuple(fitted) == (0.1, 0.5, 0.9)
     assert all(model.predict(X_val).shape == (len(X_val), 4) for model in fitted.values())
-    assert fitted[0.1].objective == "quantile"
-    assert fitted[0.1].alpha == 0.1
+    for quantile, forecaster in fitted.items():
+        assert forecaster.objective == "quantile"
+        assert forecaster.alpha == quantile
 
 
 def test_refit_uses_every_supplied_origin():
@@ -144,6 +145,27 @@ def test_refit_uses_every_supplied_origin():
 
     assert refitted.predict(X_all.iloc[[-1]]).shape == (1, 4)
     assert all(model.n_features_in_ == X_all.shape[1] for model in refitted.models)
+
+
+def test_refit_preserves_each_step_selected_iteration_count():
+    X_train, y_train, X_val, y_val = make_frames(4)
+    selected_iterations = (1, 2, 4, 5)
+    fitted = DirectLightGBMForecaster(
+        models=tuple(
+            type("SelectedModel", (), {"best_iteration_": iterations})()
+            for iterations in selected_iterations
+        ),
+        feature_names=tuple(X_train.columns),
+        candidate=SMOKE_CANDIDATE,
+    )
+    X_all = pd.concat([X_train, X_val])
+    y_all = pd.concat([y_train, y_val])
+
+    refitted = refit_direct_lightgbm(X_all, y_all, fitted, parallel_jobs=1)
+
+    assert tuple(model.get_params()["n_estimators"] for model in refitted.models) == (
+        selected_iterations
+    )
 
 
 @pytest.mark.parametrize("quantiles", [(0.5, 0.1), (0.0, 0.5, 0.9), (0.1, 1.0)])
