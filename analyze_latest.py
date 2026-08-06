@@ -11,6 +11,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.ai_config import AISettings
+from src.agent import build_agent_context_from_frames
 from src.ai_provider import (
     SUPPORTED_PROVIDERS,
     AIProviderError,
@@ -40,24 +41,26 @@ def _read_json(path: Path) -> dict[str, object]:
     return payload
 
 
-def _read_records(path: Path) -> list[dict[str, object]]:
+def _read_table(path: Path) -> pd.DataFrame:
     if not path.is_file():
         raise FileNotFoundError(f"Required report file not found: {path.name}")
     frame = pd.read_csv(path)
     if frame.empty:
         raise ValueError(f"Report table must contain at least one row: {path.name}")
-    # pandas' JSON encoder converts timestamps, NumPy scalars, and nulls into
-    # values that can be passed through the provider contract safely.
-    return json.loads(frame.to_json(orient="records", date_format="iso"))
+    return frame
 
 
 def _load_context(report_dir: Path) -> AgentContext:
     summary = _read_json(report_dir / "summary.json")
-    return AgentContext(
-        summary=summary,
-        forecast_rows=_read_records(report_dir / "forecast.csv"),
-        comparison_rows=_read_records(report_dir / "model_comparison.csv"),
-        recent_load_rows=[],
+    forecast = _read_table(report_dir / "forecast.csv")
+    if "forecast_timestamp" not in forecast:
+        raise ValueError("forecast.csv must contain forecast_timestamp")
+    timestamps = pd.to_datetime(forecast.pop("forecast_timestamp"), errors="raise")
+    forecast.index = pd.DatetimeIndex(timestamps, name="forecast_timestamp")
+    return build_agent_context_from_frames(
+        summary,
+        forecast,
+        _read_table(report_dir / "model_comparison.csv"),
     )
 
 
@@ -103,4 +106,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

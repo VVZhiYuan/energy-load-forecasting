@@ -1,6 +1,6 @@
 {
   "provider": "mock",
-  "model": "gpt-4o-mini",
+  "model": "mock",
   "content": {
     "status": "mock",
     "selected_model": "LightGBM",
@@ -13,6 +13,9 @@
       "LightGBM"
     ],
     "recent_points": 0,
+    "peak_timestamp": "2015-01-01T00:15:00",
+    "peak_prediction": 99.10825945848129,
+    "mean_interval_width": 12.589633919292943,
     "recommendations": [
       "Review the peak window and keep load flexibility available."
     ]

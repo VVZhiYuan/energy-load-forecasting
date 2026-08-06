@@ -100,6 +100,13 @@ def test_build_agent_context_includes_all_recent_observations_when_requested_win
     assert context.recent_load_rows[-1]["load"] == 15.0
 
 
+def test_build_agent_context_accepts_zero_recent_points():
+    context = build_agent_context(make_run(), recent_points=0)
+
+    assert context.recent_load_rows == []
+    assert context.summary["recent_points"] == 0
+
+
 def test_analyze_forecast_delegates_to_configured_provider(monkeypatch):
     run = make_run()
     settings = AISettings(

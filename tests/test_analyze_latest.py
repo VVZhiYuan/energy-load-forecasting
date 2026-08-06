@@ -55,7 +55,10 @@ def test_mock_provider_writes_agent_analysis(tmp_path):
         (report_dir / "agent_analysis.json").read_text(encoding="utf-8")
     )
     assert output["provider"] == "mock"
+    assert output["model"] == "mock"
     assert output["content"]["forecast_steps"] == 2
+    assert output["content"]["peak_prediction"] == 120.0
+    assert output["content"]["mean_interval_width"] == 15.0
 
 
 def test_disabled_provider_is_written_without_network(tmp_path, monkeypatch):
@@ -85,4 +88,3 @@ def test_missing_report_file_returns_two(tmp_path, capsys):
 
     assert analyze_latest.main(["--report-dir", str(report_dir)]) == 2
     assert "summary.json" in capsys.readouterr().err
-

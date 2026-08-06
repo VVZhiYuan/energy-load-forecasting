@@ -92,7 +92,7 @@ def test_disabled_provider_does_not_make_network_requests(monkeypatch):
 
     assert isinstance(response, AgentResponse)
     assert response.provider == "disabled"
-    assert response.model == "demo-model"
+    assert response.model == "none"
     assert response.content["status"] == "disabled"
     assert "disabled" in response.content["message"].lower()
 
@@ -109,7 +109,7 @@ def test_mock_provider_returns_deterministic_response_shape():
     response = provider.analyze(make_context())
 
     assert response.provider == "mock"
-    assert response.model == "demo-model"
+    assert response.model == "mock"
     assert response.content["status"] == "mock"
     assert response.content["selected_model"] == "Ridge"
     assert response.content["forecast_steps"] == 2
@@ -217,3 +217,35 @@ def test_openai_provider_rejects_non_object_content(monkeypatch):
 
     with pytest.raises(AIProviderError, match="JSON object"):
         provider.analyze(make_context())
+
+
+@pytest.mark.parametrize(
+    "wrapped_content",
+    [
+        '```json\n{"status":"ok"}\n```',
+        'Analysis follows: {"status":"ok"}',
+    ],
+)
+def test_openai_provider_accepts_wrapped_json_object(monkeypatch, wrapped_content):
+    settings = AISettings(
+        provider="openai-compatible",
+        base_url="https://llm.example/v1",
+        model="forecast-writer",
+    )
+    provider = build_provider(settings)
+
+    class FakeResponse:
+        def read(self):
+            return json.dumps(
+                {"choices": [{"message": {"content": wrapped_content}}]}
+            ).encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr("src.ai_provider.urlopen", lambda *args, **kwargs: FakeResponse())
+
+    assert provider.analyze(make_context()).content == {"status": "ok"}

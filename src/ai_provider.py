@@ -79,7 +79,7 @@ class DisabledAIProvider:
         }
         return AgentResponse(
             provider=PROVIDER_DISABLED,
-            model=self._settings.model,
+            model="none",
             content=content,
             raw_content=_json_dumps(content),
         )
@@ -101,13 +101,16 @@ class MockAIProvider:
                 row.get("model") for row in context.comparison_rows
             ],
             "recent_points": len(context.recent_load_rows),
+            "peak_timestamp": context.summary.get("peak_timestamp"),
+            "peak_prediction": context.summary.get("peak_prediction"),
+            "mean_interval_width": context.summary.get("mean_interval_width"),
             "recommendations": [
                 "Review the peak window and keep load flexibility available."
             ],
         }
         return AgentResponse(
             provider=PROVIDER_MOCK,
-            model=self._settings.model,
+            model="mock",
             content=content,
             raw_content=_json_dumps(content),
         )
@@ -163,12 +166,7 @@ class OpenAICompatibleAIProvider:
         if not isinstance(content_text, str):
             raise AIProviderError("OpenAI-compatible message content must be text.")
 
-        try:
-            content = json.loads(content_text)
-        except json.JSONDecodeError as exc:
-            raise AIProviderError(
-                "OpenAI-compatible message content must be valid JSON."
-            ) from exc
+        content = _parse_json_object(content_text)
 
         if not isinstance(content, dict):
             raise AIProviderError("OpenAI-compatible message content must be a JSON object.")
@@ -179,6 +177,35 @@ class OpenAICompatibleAIProvider:
             content=content,
             raw_content=content_text,
         )
+
+
+def _parse_json_object(content_text: str) -> dict[str, object]:
+    """Parse a JSON object from bare text, a code fence, or a short preamble."""
+
+    stripped = content_text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            stripped = "\n".join(lines[1:-1]).strip()
+
+    try:
+        content = json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        if start < 0:
+            raise AIProviderError(
+                "OpenAI-compatible message content must include a JSON object."
+            )
+        try:
+            content, _ = json.JSONDecoder().raw_decode(stripped[start:])
+        except json.JSONDecodeError as exc:
+            raise AIProviderError(
+                "OpenAI-compatible message content must include a valid JSON object."
+            ) from exc
+
+    if not isinstance(content, dict):
+        raise AIProviderError("OpenAI-compatible message content must be a JSON object.")
+    return content
 
 
 def build_provider(settings: AISettings) -> AIProvider:
