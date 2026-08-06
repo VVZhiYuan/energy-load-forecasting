@@ -1,7 +1,13 @@
 import numpy as np
 import pandas as pd
+import pytest
 
-from src.robustness import apply_scenario, scenario_catalog
+from src.data_loader import LoadedLoadSeries
+from src.robustness import (
+    apply_scenario,
+    run_robustness_experiment,
+    scenario_catalog,
+)
 
 
 def make_series(length=240):
@@ -73,3 +79,56 @@ def test_spikes_and_distribution_shift_change_only_expected_values():
     assert shift_result.affected_points == int(np.ceil(len(series) * 0.2))
     assert shift_result.series.iloc[-1] == series.iloc[-1] * 1.1
 
+
+def test_experiment_scores_perturbed_history_against_clean_future(monkeypatch):
+    series = make_series(length=300)
+    loaded = LoadedLoadSeries(series, "long", "fixture", None, 0)
+    original = series.copy(deep=True)
+    horizon = 4
+    future = series.iloc[-horizon:].to_numpy()
+    captured = []
+    predictions = [future + 1.0, future + 3.0]
+
+    def fake_run(scenario_loaded, **kwargs):
+        captured.append(scenario_loaded.series.copy())
+        values = predictions[len(captured) - 1]
+        return type(
+            "Run",
+            (),
+            {
+                "forecast": pd.DataFrame({"prediction": values}),
+                "summary": {"selected_model": "FakeModel"},
+            },
+        )()
+
+    monkeypatch.setattr("src.robustness.run_latest_forecast", fake_run)
+
+    metrics = run_robustness_experiment(
+        loaded,
+        horizon_label="1h",
+        holiday_country=None,
+        scenarios=["sensor_noise_5pct"],
+        seed=42,
+        parallel_jobs=1,
+    )
+
+    assert metrics["scenario"].tolist() == ["clean", "sensor_noise_5pct"]
+    assert metrics["mae"].tolist() == [1.0, 3.0]
+    assert metrics["clean_mae"].tolist() == [1.0, 1.0]
+    assert metrics["mae_delta"].tolist() == [0.0, 2.0]
+    assert metrics["mae_degradation_pct"].tolist() == [0.0, 200.0]
+    assert all(len(prefix) == len(series) - horizon for prefix in captured)
+    assert all(prefix.index[-1] == series.index[-horizon - 1] for prefix in captured)
+    pd.testing.assert_series_equal(series, original)
+
+
+def test_experiment_rejects_unknown_scenario():
+    loaded = LoadedLoadSeries(make_series(), "long", "fixture", None, 0)
+
+    with pytest.raises(ValueError, match="unknown robustness scenario"):
+        run_robustness_experiment(
+            loaded,
+            horizon_label="1h",
+            holiday_country=None,
+            scenarios=["not-a-scenario"],
+        )

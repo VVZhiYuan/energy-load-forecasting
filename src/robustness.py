@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from math import ceil
 
 import numpy as np
 import pandas as pd
+
+from src.data_loader import LoadedLoadSeries
+from src.evaluate import evaluate_forecast
+from src.inference import HORIZON_CONFIG, run_latest_forecast
 
 
 @dataclass(frozen=True)
@@ -134,3 +139,87 @@ def apply_scenario(
         raise ValueError("robustness scenario produced non-finite values")
     return PerturbationResult(perturbed, affected, imputed)
 
+
+def run_robustness_experiment(
+    loaded: LoadedLoadSeries,
+    horizon_label: str,
+    holiday_country: str | None,
+    scenarios: Sequence[str] | None = None,
+    seed: int = 42,
+    search: bool = False,
+    parallel_jobs: int = -1,
+    progress: Callable[[str], object] | None = None,
+) -> pd.DataFrame:
+    """Evaluate forecast degradation against an untouched historical horizon."""
+
+    try:
+        horizon = HORIZON_CONFIG[horizon_label].target_horizon_steps
+    except KeyError as exc:
+        raise ValueError("horizon_label must be '1h' or '24h'.") from exc
+
+    origin_position = len(loaded.series) - horizon - 1
+    if origin_position < 0:
+        raise ValueError("series is too short for the requested robustness horizon")
+
+    catalog = {scenario.name: scenario for scenario in scenario_catalog()}
+    requested_names = list(scenarios) if scenarios is not None else list(catalog)
+    unknown = [name for name in requested_names if name not in catalog]
+    if unknown:
+        raise ValueError(f"unknown robustness scenario: {', '.join(unknown)}")
+    ordered_names = ["clean"] + [
+        name for name in requested_names if name != "clean"
+    ]
+    observed = loaded.series.iloc[: origin_position + 1].copy()
+    future = loaded.series.iloc[origin_position + 1 : origin_position + 1 + horizon]
+    if len(future) != horizon:
+        raise ValueError("historical future horizon is incomplete")
+
+    rows: list[dict[str, object]] = []
+    for scenario_name in ordered_names:
+        scenario = catalog[scenario_name]
+        if progress is not None:
+            progress(f"Evaluating robustness scenario: {scenario.name}")
+        perturbation = apply_scenario(observed, scenario, seed=seed)
+        scenario_loaded = replace(
+            loaded,
+            series=perturbation.series,
+            negative_load_count=int((perturbation.series < 0).sum()),
+        )
+        run = run_latest_forecast(
+            scenario_loaded,
+            horizon_label=horizon_label,
+            holiday_country=holiday_country,
+            search=search,
+            parallel_jobs=parallel_jobs,
+        )
+        prediction = np.asarray(run.forecast["prediction"], dtype=float)
+        if prediction.shape != (horizon,) or not np.isfinite(prediction).all():
+            raise ValueError(
+                f"scenario {scenario.name} produced an invalid point forecast"
+            )
+        metrics = evaluate_forecast(future.to_numpy(dtype=float), prediction)
+        rows.append(
+            {
+                "scenario": scenario.name,
+                "scenario_kind": scenario.kind,
+                "forecast_origin": observed.index[-1].isoformat(),
+                "horizon": horizon_label,
+                "horizon_steps": horizon,
+                "selected_model": run.summary.get("selected_model"),
+                "affected_points": perturbation.affected_points,
+                "imputed_points": perturbation.imputed_points,
+                "mae": metrics["MAE"],
+                "rmse": metrics["RMSE"],
+                "mape": metrics["MAPE"],
+            }
+        )
+
+    result = pd.DataFrame(rows)
+    clean_mae = float(result.loc[result["scenario"].eq("clean"), "mae"].iloc[0])
+    result["clean_mae"] = clean_mae
+    result["mae_delta"] = result["mae"] - clean_mae
+    if clean_mae == 0.0:
+        result["mae_degradation_pct"] = 0.0
+    else:
+        result["mae_degradation_pct"] = result["mae_delta"] / clean_mae * 100.0
+    return result
