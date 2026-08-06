@@ -1,0 +1,20 @@
+{
+  "provider": "mock",
+  "model": "gpt-4o-mini",
+  "content": {
+    "status": "mock",
+    "selected_model": "LightGBM",
+    "horizon": "1h",
+    "forecast_steps": 4,
+    "comparison_models": [
+      "Naive",
+      "Seasonal Naive",
+      "Ridge",
+      "LightGBM"
+    ],
+    "recent_points": 0,
+    "recommendations": [
+      "Review the peak window and keep load flexibility available."
+    ]
+  }
+}
