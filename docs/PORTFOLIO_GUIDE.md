@@ -71,6 +71,8 @@ after the endpoint is available.
 
 ## Demo Path
 
+Live demo: [https://energy-load-forecasting.streamlit.app/](https://energy-load-forecasting.streamlit.app/)
+
 ```powershell
 python -m pip install -r requirements.txt
 python -m streamlit run dashboard.py
@@ -88,9 +90,9 @@ Open `http://localhost:8501` and inspect:
 Dashboard screenshots are stored in `reports/dashboard/` and can be linked
 directly from the repository or copied into a slide deck.
 
-For a public URL, follow `docs/DEPLOYMENT.md` and deploy `dashboard.py` from
-the `main` branch. The current cloud demo needs no API secrets because the
-Agent interpretation is offline mock only.
+The public deployment follows `docs/DEPLOYMENT.md` and serves `dashboard.py`
+from the `main` branch. The current cloud demo needs no API secrets because
+the Agent interpretation is offline mock only.
 
 The storage section uses a clearly labelled `synthetic_demo` tariff and battery
 configuration. It demonstrates the optimization interface, not a site-specific

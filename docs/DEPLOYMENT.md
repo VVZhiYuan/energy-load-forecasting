@@ -4,6 +4,9 @@ This project is ready for a read-only Streamlit Community Cloud deployment.
 The deployed app uses committed report artifacts and the offline mock Agent
 interpretation. It does not need API keys or a local model runtime.
 
+Live deployment:
+[https://energy-load-forecasting.streamlit.app/](https://energy-load-forecasting.streamlit.app/)
+
 ## Streamlit Community Cloud
 
 Use these settings when creating the app:

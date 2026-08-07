@@ -7,6 +7,8 @@ The project is designed for smart energy, green technology, and AI-driven energy
 > **Portfolio quick read:** [open the portfolio guide](docs/PORTFOLIO_GUIDE.md)
 > for the architecture, experiment results, AI connection, resume bullets, and
 > a two-minute interview explanation.
+>
+> **Live demo:** [energy-load-forecasting.streamlit.app](https://energy-load-forecasting.streamlit.app/)
 
 ## Current Project Status
 
@@ -160,6 +162,8 @@ download data, or modify report artifacts. The storage view is explicitly based
 on the labelled `synthetic_demo` tariff and battery assumptions. See the
 [official Streamlit installation guide](https://docs.streamlit.io/get-started/installation)
 for environment details.
+
+Public demo: [https://energy-load-forecasting.streamlit.app/](https://energy-load-forecasting.streamlit.app/)
 
 The Forecast tab includes an offline mock Agent interpretation. It does not
 call an external API. A future local or company-approved OpenAI-compatible
