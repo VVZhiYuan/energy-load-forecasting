@@ -1,0 +1,2 @@
+# Generated Plotly forecast reports should not define the repository language mix.
+reports/predictions/**/forecast.html linguist-generated=true
