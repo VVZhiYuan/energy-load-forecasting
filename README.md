@@ -166,6 +166,10 @@ call an external API. A future local or company-approved OpenAI-compatible
 endpoint can be enabled with `ENERGY_AI_PROVIDER`, `ENERGY_AI_BASE_URL`, and
 `ENERGY_AI_MODEL` after the endpoint is available.
 
+For public hosting, use the Streamlit setup in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). The current deployment mode needs
+no secrets because the Agent shown in the dashboard is offline mock only.
+
 ### Dashboard Preview
 
 | Forecast + offline Agent | Model comparison |

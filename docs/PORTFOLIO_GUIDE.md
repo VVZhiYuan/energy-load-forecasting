@@ -88,6 +88,10 @@ Open `http://localhost:8501` and inspect:
 Dashboard screenshots are stored in `reports/dashboard/` and can be linked
 directly from the repository or copied into a slide deck.
 
+For a public URL, follow `docs/DEPLOYMENT.md` and deploy `dashboard.py` from
+the `main` branch. The current cloud demo needs no API secrets because the
+Agent interpretation is offline mock only.
+
 The storage section uses a clearly labelled `synthetic_demo` tariff and battery
 configuration. It demonstrates the optimization interface, not a site-specific
 commercial dispatch recommendation.
