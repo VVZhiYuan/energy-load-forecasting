@@ -29,13 +29,6 @@ ARTIFACT_NAMES = {
     "png": "forecast.png",
     "training_history_csv": "training_history.csv",
 }
-PUBLISH_ORDER = (
-    "forecast_csv",
-    "comparison_csv",
-    "training_history_csv",
-    "png",
-    "metrics_json",
-)
 FORECAST_COLUMNS = ("step", "prediction", "p10", "p50", "p90", "interval_method")
 COMPARISON_COLUMNS = (
     "model",
@@ -109,13 +102,34 @@ def write_gru_artifacts(
         )
         _validate_staged_artifacts(staging_dir, forecast, comparison, history, metrics)
 
-        output_dir.mkdir(parents=True, exist_ok=True)
         published = {key: output_dir / name for key, name in ARTIFACT_NAMES.items()}
-        for key in PUBLISH_ORDER:
-            (staging_dir / ARTIFACT_NAMES[key]).replace(published[key])
+        _publish_directory(staging_dir, output_dir)
         return published
     finally:
         shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def _publish_directory(staging_dir: Path, output_dir: Path) -> None:
+    """Replace a complete report directory, restoring the old one on failure."""
+
+    if not output_dir.exists():
+        staging_dir.replace(output_dir)
+        return
+    if not output_dir.is_dir():
+        raise ValueError(f"report output path is not a directory: {output_dir}")
+
+    backup_dir = Path(
+        tempfile.mkdtemp(prefix=f".{output_dir.name}.backup-", dir=output_dir.parent)
+    )
+    backup_dir.rmdir()
+    output_dir.replace(backup_dir)
+    try:
+        staging_dir.replace(output_dir)
+    except OSError:
+        backup_dir.replace(output_dir)
+        raise
+    else:
+        shutil.rmtree(backup_dir)
 
 
 def _validate_forecast(forecast: pd.DataFrame) -> pd.DataFrame:

@@ -1,10 +1,13 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import deep_learning_benchmark
+import src.deep_learning_reporting as deep_learning_reporting
 
 
 def make_fake_run(horizon: int):
@@ -121,3 +124,104 @@ def test_main_publishes_complete_gru_report(monkeypatch, tmp_path):
         assert (report_dir / "forecast.png").stat().st_size > 0
         assert (report_dir / "training_history.csv").is_file()
         assert json.loads((report_dir / "metrics.json").read_text(encoding="utf-8"))["horizon"] == label
+
+
+def test_main_forwards_all_gru_config_overrides(monkeypatch, tmp_path):
+    captured = []
+    loaded = SimpleNamespace(
+        series=pd.Series(
+            np.arange(200.0), index=pd.date_range("2025-01-01", periods=200, freq="15min")
+        ),
+        source_label="fixture",
+    )
+
+    def fake_run(series, horizon, config):
+        captured.append((horizon, config))
+        return make_fake_run(horizon)
+
+    monkeypatch.setattr(
+        deep_learning_benchmark, "load_forecast_series", lambda *args, **kwargs: loaded
+    )
+    monkeypatch.setattr(deep_learning_benchmark, "run_gru_benchmark", fake_run)
+
+    assert (
+        deep_learning_benchmark.main(
+            [
+                "--input",
+                "fixture.csv",
+                "--horizon",
+                "1h",
+                "--output-dir",
+                str(tmp_path / "report"),
+                "--context-steps",
+                "8",
+                "--hidden-size",
+                "12",
+                "--num-layers",
+                "2",
+                "--batch-size",
+                "32",
+                "--epochs",
+                "5",
+                "--learning-rate",
+                "0.02",
+                "--patience",
+                "2",
+                "--seed",
+                "7",
+            ]
+        )
+        == 0
+    )
+
+    assert len(captured) == 1
+    horizon, config = captured[0]
+    assert horizon == 4
+    assert vars(config) == {
+        "context_steps": 8,
+        "hidden_size": 12,
+        "num_layers": 2,
+        "batch_size": 32,
+        "epochs": 5,
+        "learning_rate": 0.02,
+        "patience": 2,
+        "seed": 7,
+    }
+
+
+def test_publish_failure_restores_the_prior_complete_report(monkeypatch, tmp_path):
+    output = tmp_path / "report"
+    observed = pd.Series(
+        np.arange(200.0), index=pd.date_range("2025-01-01", periods=200, freq="15min")
+    )
+    deep_learning_reporting.write_gru_artifacts(
+        make_fake_run(4),
+        observed,
+        output,
+        source_label="fixture",
+        horizon_label="1h",
+        runtime_seconds=1.0,
+    )
+    prior_files = {
+        path.name: path.read_bytes() for path in output.iterdir() if path.is_file()
+    }
+    original_replace = Path.replace
+
+    def fail_staged_directory_replace(path, target):
+        if path.name.startswith(".report.staging-") and Path(target) == output:
+            raise OSError("simulated directory publish failure")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_staged_directory_replace)
+
+    with pytest.raises(OSError, match="simulated directory publish failure"):
+        deep_learning_reporting.write_gru_artifacts(
+            make_fake_run(4),
+            observed,
+            output,
+            source_label="fixture",
+            horizon_label="1h",
+            runtime_seconds=2.0,
+        )
+
+    assert {path.name: path.read_bytes() for path in output.iterdir() if path.is_file()} == prior_files
