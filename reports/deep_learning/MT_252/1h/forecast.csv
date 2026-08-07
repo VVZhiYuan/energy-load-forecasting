@@ -1,0 +1,5 @@
+forecast_timestamp,step,prediction,p10,p50,p90,interval_method
+2015-01-01 00:15:00,1,101.493546,85.771255,101.493546,117.73293,validation_residual_calibration
+2015-01-01 00:30:00,2,98.50595,80.594475,98.50595,115.06546,validation_residual_calibration
+2015-01-01 00:45:00,3,98.16168,79.52963,98.16168,115.069664,validation_residual_calibration
+2015-01-01 01:00:00,4,93.78812,75.28047,93.78812,112.52257,validation_residual_calibration

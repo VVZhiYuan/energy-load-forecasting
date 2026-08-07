@@ -19,7 +19,8 @@ finished commercial energy platform.
 | AI Agent layer | Scaffold complete | Disabled-by-default Provider interface, offline mock Agent, OpenAI-compatible API adapter, peak/uncertainty analysis |
 | Robustness analysis | Complete | Deterministic noise, missing-block, spike, and distribution-shift scenarios with clean-future evaluation |
 | Storage optimization | Complete | P10/P50/P90 battery dispatch, no-storage and rule baselines, HiGHS mixed-integer linear programming, CSV/PNG/JSON reports |
-| Deep learning and dashboard | Planned | LSTM/GRU or Transformer, and Streamlit interface |
+| Deep learning benchmark | Complete | CUDA-enabled direct GRU for 1h/24h, leakage-safe windows, validation-residual intervals, and report artifacts |
+| Dashboard | Planned | Streamlit interface for forecasts, robustness, and storage decisions |
 
 ## System Architecture
 
@@ -69,11 +70,14 @@ silently modify its predictions.
 - `src/inference.py`: selects the validation winner, refits it, and creates the latest forecast.
 - `src/robustness.py`: applies deterministic data stress scenarios and evaluates them against an untouched historical future.
 - `src/storage_optimization.py`: validates battery/tariff assumptions and runs baseline or HiGHS mixed-integer linear programming dispatch.
+- `src/deep_learning.py`: prepares leakage-safe sequence windows and trains an optional direct PyTorch GRU benchmark.
+- `src/deep_learning_reporting.py`: atomically publishes GRU benchmark CSV, JSON, and PNG artifacts.
 - `src/reporting.py`: publishes machine-readable and visual forecast artifacts.
 - `src/ai_config.py` and `src/ai_provider.py`: define the disabled, mock, and OpenAI-compatible Agent providers.
 - `src/agent.py`: builds a JSON-safe context containing forecast peaks, uncertainty, model comparison, and recent load information.
 - `analyze_latest.py`: runs the Agent against a saved report without rerunning the numerical forecast.
 - `optimize_storage.py`: turns a saved 24-hour forecast into atomic storage-dispatch report artifacts.
+- `deep_learning_benchmark.py`: runs the optional 1h/24h GRU benchmark on the selected meter.
 
 ## End-To-End Example
 
@@ -335,6 +339,43 @@ Seasonal Naive remains lower at 15.33 kW MAE versus LightGBM at 18.09 kW MAE.
 | 1h | LightGBM | 10.98 | 12.69 | [forecast.csv](reports/predictions/MT_252/1h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/1h/model_comparison.csv), [summary.json](reports/predictions/MT_252/1h/summary.json), [forecast.html](reports/predictions/MT_252/1h/forecast.html) |
 | 24h | LightGBM | 13.78 | 18.09 | [forecast.csv](reports/predictions/MT_252/24h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/24h/model_comparison.csv), [summary.json](reports/predictions/MT_252/24h/summary.json), [forecast.html](reports/predictions/MT_252/24h/forecast.html) |
 
+## Deep Learning GRU Benchmark
+
+The repository includes an optional PyTorch direct GRU benchmark. It consumes
+the previous 96 observed 15-minute load values and predicts the complete next
+1h or 24h trajectory in one pass. Sequence windows use the same chronological
+target-boundary split as the classical models; scaling is fitted only on the
+training windows, and early stopping selects the best validation-MAE checkpoint.
+
+Install the PyTorch wheel appropriate for the local CPU/GPU, then run both
+horizons:
+
+```powershell
+python -m pip install -r requirements-deep-learning.txt
+python deep_learning_benchmark.py --horizon both --epochs 15 --batch-size 256
+```
+
+The P50 is the GRU point forecast. P10 and P90 use lead-wise validation
+residual quantiles, so they are uncertainty diagnostics rather than guaranteed
+coverage intervals. Each run atomically publishes a metrics JSON, comparison
+CSV, latest forecast CSV, training history, and chart.
+
+| Horizon | GRU device | GRU test MAE (kW) | GRU test RMSE (kW) | Interpretation |
+|---|---|---:|---:|---|
+| 1h | CUDA RTX 4060 | 11.96 | 17.10 | Better than this run's LightGBM test MAE of 12.69 kW, but not a universal claim. |
+| 24h | CUDA RTX 4060 | 18.55 | 27.37 | Slightly above LightGBM at 18.09 kW and Seasonal Naive at 15.33 kW. |
+
+The result is deliberately mixed: GRU is competitive for 1h, while the strong
+daily seasonality makes Seasonal Naive a harder 24h baseline on this meter.
+This is more useful evidence than claiming a neural model wins by default.
+
+Artifacts: [1h metrics](reports/deep_learning/MT_252/1h/metrics.json),
+[1h chart](reports/deep_learning/MT_252/1h/forecast.png),
+[24h metrics](reports/deep_learning/MT_252/24h/metrics.json), and
+[24h chart](reports/deep_learning/MT_252/24h/forecast.png).
+
+![GRU 24-hour benchmark](reports/deep_learning/MT_252/24h/forecast.png)
+
 ## Forecast-Driven Storage Optimization
 
 The 24-hour forecast can drive a battery scheduling decision without changing
@@ -560,11 +601,15 @@ energy-load-forecasting/
 - Gain-based feature importance completed and exported.
 - SHAP summary diagnostics completed for selected forecast leads.
 
-### Week 4-5: Deep Learning Models
+### Week 4-5: Deep Learning Benchmark (Completed)
 
-- LSTM.
-- GRU.
-- Optional Transformer model.
+- Direct 96-step-context GRU completed for 1h and 24h trajectories.
+- Train-only normalization, target-boundary chronological splits, and
+  validation-MAE early stopping completed.
+- CUDA benchmark reports, residual-calibrated intervals, and classical-model
+  comparisons completed.
+- Future extensions: LSTM/Transformer only if multi-origin evaluation shows
+  a clear benefit over the current baselines.
 
 ### Week 6: Robustness Analysis (Completed)
 

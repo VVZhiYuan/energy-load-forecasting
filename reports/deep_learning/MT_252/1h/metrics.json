@@ -1,0 +1,73 @@
+{
+  "artifacts": {
+    "comparison_csv": "comparison.csv",
+    "forecast_csv": "forecast.csv",
+    "metrics_json": "metrics.json",
+    "png": "forecast.png",
+    "training_history_csv": "training_history.csv"
+  },
+  "best_epoch": 11,
+  "config": {
+    "batch_size": 256,
+    "context_steps": 96,
+    "epochs": 15,
+    "hidden_size": 64,
+    "learning_rate": 0.001,
+    "num_layers": 1,
+    "patience": 3,
+    "seed": 42
+  },
+  "device": "cuda",
+  "horizon": "1h",
+  "horizon_steps": 4,
+  "runtime_seconds": 35.38106499996502,
+  "scaler": {
+    "mean": 240.1474691301341,
+    "std": 83.41209248915204
+  },
+  "source_label": "MT_252",
+  "source_metadata": {
+    "input_format": "wide",
+    "meter": "MT_252",
+    "negative_load_count": 0
+  },
+  "split_sizes": {
+    "test": 21035,
+    "train": 98080,
+    "validation": 21034
+  },
+  "test_metrics": {
+    "Endpoint_MAE": 13.136314527331606,
+    "MAE": 11.957508316067242,
+    "MAPE": 7.993825365879601,
+    "RMSE": 17.102751996127676
+  },
+  "validation_metrics": {
+    "Endpoint_MAE": 12.106097566295942,
+    "MAE": 11.305774372589955,
+    "MAPE": 7.389104742904406,
+    "RMSE": 16.512298463261455
+  },
+  "validation_residual_quantiles": [
+    [
+      -15.7222900390625,
+      0.207489013671875,
+      16.23938903808594
+    ],
+    [
+      -17.911473083496094,
+      0.0970001220703125,
+      16.559512329101572
+    ],
+    [
+      -18.632046508789063,
+      -0.21366119384765625,
+      16.90798492431641
+    ],
+    [
+      -18.507647705078124,
+      0.1890411376953125,
+      18.7344482421875
+    ]
+  ]
+}

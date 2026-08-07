@@ -240,11 +240,12 @@ def _render_png(
         raise ValueError("test targets and predictions must be aligned non-empty matrices.")
 
     figure, axes = plt.subplots(1, 2, figsize=(13, 5), layout="constrained")
-    test_x = np.arange(actual.shape[0])
-    axes[0].plot(test_x, actual[:, 0], label="Actual test load")
-    axes[0].plot(test_x, prediction[:, 0], label="GRU prediction")
-    axes[0].set_title("Test forecast, first lead")
-    axes[0].set_xlabel("Test sample")
+    display_count = min(384, actual.shape[0])
+    test_x = np.arange(display_count)
+    axes[0].plot(test_x, actual[-display_count:, 0], label="Actual test load")
+    axes[0].plot(test_x, prediction[-display_count:, 0], label="GRU prediction")
+    axes[0].set_title("Test forecast, first lead (last 4 days)")
+    axes[0].set_xlabel("Test sample in displayed window")
     axes[0].set_ylabel("Load")
     axes[0].legend()
 
