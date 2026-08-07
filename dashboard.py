@@ -13,6 +13,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.agent import build_agent_context_from_frames
+from src.ai_config import AISettings
+from src.ai_provider import AgentResponse, PROVIDER_MOCK, build_provider
 from src.config import REPORTS_DIR
 from src.dashboard_data import (
     DashboardReportError,
@@ -38,6 +41,27 @@ def _csv_bytes(frame: pd.DataFrame) -> bytes:
 
 def _metric_value(metrics: dict[str, Any], section: str, metric: str) -> float:
     return float(metrics[section][metric])
+
+
+def _build_offline_agent_response(
+    forecast: pd.DataFrame,
+    metadata: dict[str, Any],
+    comparison: pd.DataFrame,
+) -> AgentResponse:
+    context = build_agent_context_from_frames(
+        metadata,
+        forecast,
+        comparison,
+        recent_load_rows=[],
+    )
+    settings = AISettings(provider=PROVIDER_MOCK, model="offline-mock")
+    response = build_provider(settings).analyze(context)
+    return AgentResponse(
+        provider=response.provider,
+        model=settings.model,
+        content=response.content,
+        raw_content=response.raw_content,
+    )
 
 
 def _load_gru_forecast(horizon: str) -> pd.DataFrame:

@@ -72,6 +72,28 @@ class _FakeStreamlit:
         self.infos.append(message)
 
 
+def test_build_offline_agent_response_forces_mock_provider(monkeypatch):
+    forecast = pd.DataFrame(
+        {"step": [1, 2], "prediction": [100.0, 120.0], "p10": [90.0, 100.0], "p90": [110.0, 140.0]},
+        index=pd.date_range("2025-01-01", periods=2, freq="h"),
+    )
+    comparison = pd.DataFrame(
+        [{"model": "LightGBM", "selected": True, "test_mae": 2.0, "test_rmse": 3.0}]
+    )
+
+    monkeypatch.setenv("ENERGY_AI_PROVIDER", "openai-compatible")
+    response = dashboard._build_offline_agent_response(
+        forecast,
+        {"selected_model": "LightGBM", "horizon": "1h"},
+        comparison,
+    )
+
+    assert response.provider == "mock"
+    assert response.model == "offline-mock"
+    assert response.content["peak_prediction"] == 120.0
+    assert response.content["mean_interval_width"] == 30.0
+
+
 def test_forecast_figure_reserves_space_between_title_and_legend():
     forecast = pd.DataFrame(
         {"p10": [90.0, 91.0], "p50": [100.0, 101.0], "p90": [110.0, 111.0]},
