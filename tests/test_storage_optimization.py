@@ -521,3 +521,21 @@ def test_optimizer_rejects_infeasible_terminal_energy():
 
     with pytest.raises(ValueError, match="optimization failed"):
         optimize_dispatch(low_load, tariff_schedule, battery, TariffConfig())
+
+
+def test_milp_rejects_self_cycling_only_terminal_target():
+    load, tariff_schedule = make_load_and_tariff()
+    low_load = pd.Series(1.0, index=load.index)
+    battery = BatteryConfig(
+        capacity_kwh=300.0,
+        initial_soc=0.90,
+        terminal_soc=0.10,
+    )
+
+    with pytest.raises(ValueError, match="storage optimization failed"):
+        optimize_dispatch(
+            low_load,
+            tariff_schedule,
+            battery,
+            TariffConfig(throughput_cost=0.0),
+        )
