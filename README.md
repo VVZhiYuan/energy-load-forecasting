@@ -18,8 +18,8 @@ finished commercial energy platform.
 | Latest forecast workflow | Complete | 1h/24h CLI, refit on all labeled history, P10/P50/P90 scenarios, CSV/PNG/HTML/JSON reports |
 | AI Agent layer | Scaffold complete | Disabled-by-default Provider interface, offline mock Agent, OpenAI-compatible API adapter, peak/uncertainty analysis |
 | Robustness analysis | Complete | Deterministic noise, missing-block, spike, and distribution-shift scenarios with clean-future evaluation |
-| Storage optimization | Complete | P10/P50/P90 battery dispatch, no-storage and rule baselines, HiGHS linear programming, CSV/PNG/JSON reports |
-| Deep learning and dashboard | Planned | LSTM/GRU or Transformer, MILP dispatch upgrade, and Streamlit interface |
+| Storage optimization | Complete | P10/P50/P90 battery dispatch, no-storage and rule baselines, HiGHS mixed-integer linear programming, CSV/PNG/JSON reports |
+| Deep learning and dashboard | Planned | LSTM/GRU or Transformer, and Streamlit interface |
 
 ## System Architecture
 
@@ -44,7 +44,7 @@ UCI or custom 15-minute load data
              |
              v
   forecast-driven storage optimizer
-  (no-storage / rule baseline / LP battery dispatch)
+  (no-storage / rule baseline / HiGHS MILP battery dispatch)
              |
              +--> dispatch CSV / cost and peak metrics / P50 chart
              |
@@ -68,7 +68,7 @@ silently modify its predictions.
 - `src/ml_models.py`: fits direct LightGBM models and quantile intervals.
 - `src/inference.py`: selects the validation winner, refits it, and creates the latest forecast.
 - `src/robustness.py`: applies deterministic data stress scenarios and evaluates them against an untouched historical future.
-- `src/storage_optimization.py`: validates battery/tariff assumptions and runs baseline or HiGHS linear-programming dispatch.
+- `src/storage_optimization.py`: validates battery/tariff assumptions and runs baseline or HiGHS mixed-integer linear programming dispatch.
 - `src/reporting.py`: publishes machine-readable and visual forecast artifacts.
 - `src/ai_config.py` and `src/ai_provider.py`: define the disabled, mock, and OpenAI-compatible Agent providers.
 - `src/agent.py`: builds a JSON-safe context containing forecast peaks, uncertainty, model comparison, and recent load information.
@@ -340,10 +340,12 @@ Seasonal Naive remains lower at 15.33 kW MAE versus LightGBM at 18.09 kW MAE.
 The 24-hour forecast can drive a battery scheduling decision without changing
 the numerical forecast model. The optimizer runs all P10/P50/P90 trajectories
 through three strategies: no storage, a transparent tariff-rule baseline, and
-a linear-programming (LP) schedule solved by SciPy HiGHS. It minimizes energy
-cost, a configurable peak-import penalty, and small battery-throughput cost
-while enforcing power limits, state-of-charge limits, round-trip efficiency,
-non-negative grid import, and terminal state of charge.
+a mixed-integer linear programming (MILP) schedule solved by SciPy HiGHS. It
+minimizes energy cost, a configurable peak-import penalty, and small
+battery-throughput cost while enforcing power limits, state-of-charge limits,
+round-trip efficiency, non-negative grid import, and terminal state of charge.
+One binary charge/discharge mode per 15-minute interval enforces mutually
+exclusive battery activity.
 
 Run the saved UCI forecast through the optimizer:
 
@@ -367,9 +369,9 @@ datasheet before using the output operationally.
 |---|---:|---:|---:|
 | No storage | 4503.47 | 288.56 | 0.00 kW |
 | Rule baseline | 4221.57 | 312.99 | -24.42 kW |
-| LP optimized | 4298.29 | 223.41 | 65.15 kW (22.58%) |
+| MILP optimized | 4298.29 | 223.41 | 65.15 kW (22.58%) |
 
-For the P50 trajectory, LP dispatch saves 205.18 energy-cost units (4.56%)
+For the P50 trajectory, HiGHS MILP dispatch saves 205.18 energy-cost units (4.56%)
 and lowers the peak by 65.15 kW under those demo assumptions. The rule
 baseline is deliberately simple and can increase the peak; it is retained as
 an honest benchmark rather than presented as a production policy.
@@ -576,10 +578,11 @@ energy-load-forecasting/
 
 - P10/P50/P90 forecast-to-dispatch orchestration completed.
 - No-storage and tariff-rule baselines completed.
-- Forecast-driven HiGHS LP battery dispatch completed.
+- Forecast-driven HiGHS MILP battery dispatch completed.
 - Atomic CSV, JSON, and P50 chart publication completed.
-- Next optimization upgrade: MILP charge/discharge exclusivity and
-  site-specific tariff/battery inputs.
+- One binary mode per 15-minute interval enforces mutually exclusive
+  charge/discharge activity.
+- Next optimization upgrade: site-specific tariff/battery inputs.
 
 ### Week 8: Dashboard
 

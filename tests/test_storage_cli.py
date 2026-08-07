@@ -52,7 +52,7 @@ def test_main_writes_complete_optimization_report(tmp_path, capsys):
     assert len(pd.read_csv(dispatch_path)) == 96 * 9
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["source_label"] == "fixture_meter"
-    assert summary["solver_method"] == "scipy_highs_linprog"
+    assert summary["solver_method"] == "scipy_highs_milp"
     assert len(summary["results"]) == 9
     assert "Complete" in capsys.readouterr().out
 
