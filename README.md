@@ -18,7 +18,8 @@ finished commercial energy platform.
 | Latest forecast workflow | Complete | 1h/24h CLI, refit on all labeled history, P10/P50/P90 scenarios, CSV/PNG/HTML/JSON reports |
 | AI Agent layer | Scaffold complete | Disabled-by-default Provider interface, offline mock Agent, OpenAI-compatible API adapter, peak/uncertainty analysis |
 | Robustness analysis | Complete | Deterministic noise, missing-block, spike, and distribution-shift scenarios with clean-future evaluation |
-| Deep learning, optimization, dashboard | Planned | LSTM/GRU or Transformer, storage optimization, and Streamlit interface |
+| Storage optimization | Complete | P10/P50/P90 battery dispatch, no-storage and rule baselines, HiGHS linear programming, CSV/PNG/JSON reports |
+| Deep learning and dashboard | Planned | LSTM/GRU or Transformer, MILP dispatch upgrade, and Streamlit interface |
 
 ## System Architecture
 
@@ -42,6 +43,12 @@ UCI or custom 15-minute load data
              +--> CSV / PNG / interactive HTML / summary JSON
              |
              v
+  forecast-driven storage optimizer
+  (no-storage / rule baseline / LP battery dispatch)
+             |
+             +--> dispatch CSV / cost and peak metrics / P50 chart
+             |
+             v
   optional AI Agent
   (explain peak, uncertainty, model comparison, and operations)
 ```
@@ -61,10 +68,12 @@ silently modify its predictions.
 - `src/ml_models.py`: fits direct LightGBM models and quantile intervals.
 - `src/inference.py`: selects the validation winner, refits it, and creates the latest forecast.
 - `src/robustness.py`: applies deterministic data stress scenarios and evaluates them against an untouched historical future.
+- `src/storage_optimization.py`: validates battery/tariff assumptions and runs baseline or HiGHS linear-programming dispatch.
 - `src/reporting.py`: publishes machine-readable and visual forecast artifacts.
 - `src/ai_config.py` and `src/ai_provider.py`: define the disabled, mock, and OpenAI-compatible Agent providers.
 - `src/agent.py`: builds a JSON-safe context containing forecast peaks, uncertainty, model comparison, and recent load information.
 - `analyze_latest.py`: runs the Agent against a saved report without rerunning the numerical forecast.
+- `optimize_storage.py`: turns a saved 24-hour forecast into atomic storage-dispatch report artifacts.
 
 ## End-To-End Example
 
@@ -326,6 +335,47 @@ Seasonal Naive remains lower at 15.33 kW MAE versus LightGBM at 18.09 kW MAE.
 | 1h | LightGBM | 10.98 | 12.69 | [forecast.csv](reports/predictions/MT_252/1h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/1h/model_comparison.csv), [summary.json](reports/predictions/MT_252/1h/summary.json), [forecast.html](reports/predictions/MT_252/1h/forecast.html) |
 | 24h | LightGBM | 13.78 | 18.09 | [forecast.csv](reports/predictions/MT_252/24h/forecast.csv), [model_comparison.csv](reports/predictions/MT_252/24h/model_comparison.csv), [summary.json](reports/predictions/MT_252/24h/summary.json), [forecast.html](reports/predictions/MT_252/24h/forecast.html) |
 
+## Forecast-Driven Storage Optimization
+
+The 24-hour forecast can drive a battery scheduling decision without changing
+the numerical forecast model. The optimizer runs all P10/P50/P90 trajectories
+through three strategies: no storage, a transparent tariff-rule baseline, and
+a linear-programming (LP) schedule solved by SciPy HiGHS. It minimizes energy
+cost, a configurable peak-import penalty, and small battery-throughput cost
+while enforcing power limits, state-of-charge limits, round-trip efficiency,
+non-negative grid import, and terminal state of charge.
+
+Run the saved UCI forecast through the optimizer:
+
+```powershell
+python optimize_storage.py --forecast-dir reports/predictions/MT_252/24h
+```
+
+This produces [dispatch.csv](reports/optimization/MT_252/24h/dispatch.csv),
+[optimization_summary.json](reports/optimization/MT_252/24h/optimization_summary.json),
+and the chart below. Publication is atomic: artifacts are first validated in a
+temporary sibling directory, then moved into the destination directory.
+
+The committed portfolio run uses a 500 kWh battery, 100 kW charge/discharge
+limits, 10%-90% SOC range, 90% round-trip efficiency, and a 50% terminal SOC.
+Its time-of-use tariff is intentionally marked `synthetic_demo`: off-peak
+0.60, shoulder 1.00, and peak 1.50 units/kWh, plus a 5.00 units/kW peak-import
+penalty. Replace these parameters with a site-specific tariff and battery
+datasheet before using the output operationally.
+
+| P50 strategy | Energy cost (units) | Peak import (kW) | Peak reduction vs no storage |
+|---|---:|---:|---:|
+| No storage | 4503.47 | 288.56 | 0.00 kW |
+| Rule baseline | 4221.57 | 312.99 | -24.42 kW |
+| LP optimized | 4298.29 | 223.41 | 65.15 kW (22.58%) |
+
+For the P50 trajectory, LP dispatch saves 205.18 energy-cost units (4.56%)
+and lowers the peak by 65.15 kW under those demo assumptions. The rule
+baseline is deliberately simple and can increase the peak; it is retained as
+an honest benchmark rather than presented as a production policy.
+
+![P50 optimized battery dispatch](reports/optimization/MT_252/24h/storage_dispatch.png)
+
 ## Robustness Analysis
 
 Run deterministic stress tests against an untouched historical future:
@@ -420,6 +470,7 @@ energy-load-forecasting/
   predict_latest.py
   analyze_latest.py
   robustness_analysis.py
+  optimize_storage.py
   data/
     README.md
     raw/
@@ -439,6 +490,7 @@ energy-load-forecasting/
     forecasting.py
     ml_models.py
     robustness.py
+    storage_optimization.py
     ai_config.py
     ai_provider.py
     agent.py
@@ -450,6 +502,8 @@ energy-load-forecasting/
     test_ml_models.py
     test_robustness.py
     test_robustness_cli.py
+    test_storage_optimization.py
+    test_storage_cli.py
   reports/
     figures/
       average_daily_pattern.png
@@ -518,11 +572,20 @@ energy-load-forecasting/
 - Recent distribution shift completed.
 - Clean-future 1h and 24h sensitivity reports completed.
 
-### Week 7: Dashboard
+### Week 7: Storage Optimization (Completed)
+
+- P10/P50/P90 forecast-to-dispatch orchestration completed.
+- No-storage and tariff-rule baselines completed.
+- Forecast-driven HiGHS LP battery dispatch completed.
+- Atomic CSV, JSON, and P50 chart publication completed.
+- Next optimization upgrade: MILP charge/discharge exclusivity and
+  site-specific tariff/battery inputs.
+
+### Week 8: Dashboard
 
 - Streamlit demo for visualizing forecasts, errors, and energy insights.
 
-### Week 8: Portfolio Packaging
+### Week 9: Portfolio Packaging
 
 - Polish README.
 - Add project summary.

@@ -1,0 +1,249 @@
+{
+  "artifacts": {
+    "chart_png": "storage_dispatch.png",
+    "dispatch_csv": "dispatch.csv",
+    "summary_json": "optimization_summary.json"
+  },
+  "assumption_source": "synthetic_demo",
+  "battery_config": {
+    "capacity_kwh": 500.0,
+    "initial_soc": 0.5,
+    "interval_hours": 0.25,
+    "max_charge_kw": 100.0,
+    "max_discharge_kw": 100.0,
+    "max_soc": 0.9,
+    "min_soc": 0.1,
+    "round_trip_efficiency": 0.9,
+    "terminal_soc": 0.5
+  },
+  "forecast_horizon": "24h",
+  "forecast_model": "LightGBM",
+  "package_versions": {
+    "matplotlib": "3.11.1",
+    "numpy": "2.3.5",
+    "pandas": "3.0.1",
+    "python": "3.12.13",
+    "scipy": "1.18.0"
+  },
+  "primary_scenario": "p50",
+  "results": [
+    {
+      "battery_charge_kwh": 0.0,
+      "battery_discharge_kwh": 0.0,
+      "battery_throughput_kwh": 0.0,
+      "cost_savings": 0.0,
+      "cost_savings_pct": 0.0,
+      "max_soc": 0.5,
+      "min_soc": 0.5,
+      "objective_value": 3818.3371079044427,
+      "peak_import_kw": 197.60101983680747,
+      "peak_reduction_kw": 0.0,
+      "peak_reduction_pct": 0.0,
+      "scenario": "p10",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "method": "no_storage",
+        "success": true
+      },
+      "strategy": "no_storage",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 2830.3320087204056
+    },
+    {
+      "battery_charge_kwh": 421.63702135578393,
+      "battery_discharge_kwh": 379.4733192202055,
+      "battery_throughput_kwh": 801.1103405759894,
+      "cost_savings": 281.90036174568104,
+      "cost_savings_pct": 9.959975044522368,
+      "max_soc": 0.9,
+      "min_soc": 0.1,
+      "objective_value": 3621.06688344223,
+      "peak_import_kw": 211.3226059311971,
+      "peak_reduction_kw": -13.721586094389636,
+      "peak_reduction_pct": -6.944086678156756,
+      "scenario": "p10",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "method": "rule_based",
+        "success": true
+      },
+      "strategy": "rule_based",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 2548.4316469747246
+    },
+    {
+      "battery_charge_kwh": 296.5528857249563,
+      "battery_discharge_kwh": 266.89759715246,
+      "battery_throughput_kwh": 563.4504828774163,
+      "cost_savings": 154.3416663836888,
+      "cost_savings_pct": 5.453129382282848,
+      "max_soc": 0.9,
+      "min_soc": 0.3878992919740658,
+      "objective_value": 3298.334790792526,
+      "peak_import_kw": 122.21508775965208,
+      "peak_reduction_kw": 75.38593207715539,
+      "peak_reduction_pct": 38.15057844307397,
+      "scenario": "p10",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "method": "scipy_highs_linprog",
+        "objective_value": 3298.3347907925245,
+        "status": 0,
+        "success": true
+      },
+      "strategy": "optimized",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 2675.990342336717
+    },
+    {
+      "battery_charge_kwh": 0.0,
+      "battery_discharge_kwh": 0.0,
+      "battery_throughput_kwh": 0.0,
+      "cost_savings": 0.0,
+      "cost_savings_pct": 0.0,
+      "max_soc": 0.5,
+      "min_soc": 0.5,
+      "objective_value": 5946.280449601996,
+      "peak_import_kw": 288.5622185329583,
+      "peak_reduction_kw": 0.0,
+      "peak_reduction_pct": 0.0,
+      "scenario": "p50",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "method": "no_storage",
+        "success": true
+      },
+      "strategy": "no_storage",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 4503.469356937205
+    },
+    {
+      "battery_charge_kwh": 421.63702135578393,
+      "battery_discharge_kwh": 379.4733192202055,
+      "battery_throughput_kwh": 801.1103405759894,
+      "cost_savings": 281.90036174568104,
+      "cost_savings_pct": 6.259626510202361,
+      "max_soc": 0.9,
+      "min_soc": 0.1,
+      "objective_value": 5802.520503649714,
+      "peak_import_kw": 312.98586032933395,
+      "peak_reduction_kw": -24.423641796375648,
+      "peak_reduction_pct": -8.46390838015618,
+      "scenario": "p50",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "method": "rule_based",
+        "success": true
+      },
+      "strategy": "rule_based",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 4221.568995191524
+    },
+    {
+      "battery_charge_kwh": 386.61056343962525,
+      "battery_discharge_kwh": 347.94950709566217,
+      "battery_throughput_kwh": 734.5600705352874,
+      "cost_savings": 205.17683263830895,
+      "cost_savings_pct": 4.555972659661863,
+      "max_soc": 0.9,
+      "min_soc": 0.18303577568540544,
+      "objective_value": 5430.0562026851885,
+      "peak_import_kw": 223.41449539511746,
+      "peak_reduction_kw": 65.14772313784084,
+      "peak_reduction_pct": 22.57666421787645,
+      "scenario": "p50",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "method": "scipy_highs_linprog",
+        "objective_value": 5430.056202685184,
+        "status": 0,
+        "success": true
+      },
+      "strategy": "optimized",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 4298.292524298896
+    },
+    {
+      "battery_charge_kwh": 0.0,
+      "battery_discharge_kwh": 0.0,
+      "battery_throughput_kwh": 0.0,
+      "cost_savings": 0.0,
+      "cost_savings_pct": 0.0,
+      "max_soc": 0.5,
+      "min_soc": 0.5,
+      "objective_value": 7644.862523546598,
+      "peak_import_kw": 336.2857800602096,
+      "peak_reduction_kw": 0.0,
+      "peak_reduction_pct": 0.0,
+      "scenario": "p90",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "method": "no_storage",
+        "success": true
+      },
+      "strategy": "no_storage",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 5963.43362324555
+    },
+    {
+      "battery_charge_kwh": 421.63702135578393,
+      "battery_discharge_kwh": 379.4733192202055,
+      "battery_throughput_kwh": 801.1103405759894,
+      "cost_savings": 281.90036174568195,
+      "cost_savings_pct": 4.727148477796924,
+      "max_soc": 0.9,
+      "min_soc": 0.1,
+      "objective_value": 7388.69277922801,
+      "peak_import_kw": 338.2274621833245,
+      "peak_reduction_kw": -1.9416821231149015,
+      "peak_reduction_pct": -0.5773904929216028,
+      "scenario": "p90",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "method": "rule_based",
+        "success": true
+      },
+      "strategy": "rule_based",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 5681.533261499868
+    },
+    {
+      "battery_charge_kwh": 401.4831947671231,
+      "battery_discharge_kwh": 361.3348752904096,
+      "battery_throughput_kwh": 762.8180700575327,
+      "cost_savings": 180.82905224471233,
+      "cost_savings_pct": 3.0322975599131023,
+      "max_soc": 0.9,
+      "min_soc": 0.1382391973529375,
+      "objective_value": 7214.985845603706,
+      "peak_import_kw": 283.42498264034367,
+      "peak_reduction_kw": 52.860797419865946,
+      "peak_reduction_pct": 15.71901060175711,
+      "scenario": "p90",
+      "simultaneous_activity_count": 0,
+      "solver": {
+        "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+        "method": "scipy_highs_linprog",
+        "objective_value": 7214.985845603707,
+        "status": 0,
+        "success": true
+      },
+      "strategy": "optimized",
+      "terminal_soc": 0.5,
+      "total_energy_cost": 5782.6045710008375
+    }
+  ],
+  "solver_method": "scipy_highs_linprog",
+  "source_forecast_dir": "reports\\predictions\\MT_252\\24h",
+  "source_label": "MT_252",
+  "tariff_config": {
+    "off_peak_price": 0.6,
+    "peak_import_penalty": 5.0,
+    "peak_price": 1.5,
+    "shoulder_price": 1.0,
+    "source": "synthetic_demo",
+    "throughput_cost": 0.02
+  }
+}
