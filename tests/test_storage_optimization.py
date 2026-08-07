@@ -454,6 +454,23 @@ def test_optimizer_satisfies_balance_bounds_and_terminal_energy():
     assert result.solver["success"] is True
 
 
+def test_optimizer_uses_milp_and_strictly_excludes_simultaneous_activity():
+    load, tariff_schedule = make_load_and_tariff()
+    result = optimize_dispatch(
+        load,
+        tariff_schedule,
+        BatteryConfig(),
+        TariffConfig(throughput_cost=0.0),
+    )
+
+    schedule = result.schedule
+    assert result.solver["method"] == "scipy_highs_milp"
+    assert result.metrics["simultaneous_activity_count"] == 0
+    assert not (
+        (schedule["charge_kw"] > 1e-8) & (schedule["discharge_kw"] > 1e-8)
+    ).any()
+
+
 def test_optimized_objective_is_not_worse_than_no_storage():
     load, tariff_schedule = make_load_and_tariff()
     battery = BatteryConfig()
@@ -475,6 +492,7 @@ def test_optimizer_is_deterministic_for_identical_inputs():
 
     pd.testing.assert_frame_equal(first.schedule, second.schedule)
     assert first.metrics == second.metrics
+    assert first.solver["method"] == "scipy_highs_milp"
 
 
 def test_runner_reports_three_scenarios_and_three_strategies():
@@ -491,7 +509,7 @@ def test_runner_reports_three_scenarios_and_three_strategies():
     assert len(dispatch) == 96 * 9
     assert len(summary["results"]) == 9
     assert summary["primary_scenario"] == "p50"
-    assert summary["solver_method"] == "scipy_highs_linprog"
+    assert summary["solver_method"] == "scipy_highs_milp"
     assert all("cost_savings" in row for row in summary["results"])
     assert all("peak_reduction_kw" in row for row in summary["results"])
 

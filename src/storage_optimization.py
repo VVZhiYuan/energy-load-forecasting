@@ -7,7 +7,7 @@ from numbers import Real
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import linprog
+from scipy.optimize import Bounds, LinearConstraint, milp
 
 
 FORECAST_QUANTILES = ("p10", "p50", "p90")
@@ -461,7 +461,7 @@ def optimize_dispatch(
     battery: BatteryConfig,
     tariff: TariffConfig,
 ) -> DispatchResult:
-    """Minimize energy, peak, and throughput costs with a linear battery model."""
+    """Minimize energy, peak, and throughput costs with a mixed-integer model."""
 
     numeric_load, schedule = _validate_dispatch_inputs(
         load, tariff_schedule, battery, tariff
@@ -474,7 +474,8 @@ def optimize_dispatch(
     grid_start = 2 * count
     energy_start = 3 * count
     peak_position = 4 * count
-    variable_count = peak_position + 1
+    mode_start = peak_position + 1
+    variable_count = mode_start + count
     interval_hours = battery.interval_hours
 
     objective = np.zeros(variable_count, dtype=float)
@@ -514,28 +515,67 @@ def optimize_dispatch(
 
     equality = np.vstack((equality, dynamics))
     equality_rhs = np.concatenate((equality_rhs, dynamics_rhs))
-    inequality = np.zeros((count, variable_count), dtype=float)
+    peak_rows = np.zeros((count, variable_count), dtype=float)
+    charge_mode_rows = np.zeros((count, variable_count), dtype=float)
+    discharge_mode_rows = np.zeros((count, variable_count), dtype=float)
     for position in range(count):
-        inequality[position, grid_start + position] = 1.0
-        inequality[position, peak_position] = -1.0
+        peak_rows[position, grid_start + position] = 1.0
+        peak_rows[position, peak_position] = -1.0
+        charge_mode_rows[position, charge_start + position] = 1.0
+        charge_mode_rows[position, mode_start + position] = (
+            -battery.max_charge_kw
+        )
+        discharge_mode_rows[position, discharge_start + position] = 1.0
+        discharge_mode_rows[position, mode_start + position] = (
+            battery.max_discharge_kw
+        )
 
     min_energy = battery.capacity_kwh * battery.min_soc
     max_energy = battery.capacity_kwh * battery.max_soc
-    bounds = (
-        [(0.0, battery.max_charge_kw)] * count
-        + [(0.0, battery.max_discharge_kw)] * count
-        + [(0.0, None)] * count
-        + [(min_energy, max_energy)] * count
-        + [(0.0, None)]
+    lower_bounds = np.concatenate(
+        (
+            np.zeros(count),
+            np.zeros(count),
+            np.zeros(count),
+            np.full(count, min_energy),
+            np.array([0.0]),
+            np.zeros(count),
+        )
     )
-    result = linprog(
-        objective,
-        A_ub=inequality,
-        b_ub=np.zeros(count, dtype=float),
-        A_eq=equality,
-        b_eq=equality_rhs,
-        bounds=bounds,
-        method="highs",
+    upper_bounds = np.concatenate(
+        (
+            np.full(count, battery.max_charge_kw),
+            np.full(count, battery.max_discharge_kw),
+            np.full(count, np.inf),
+            np.full(count, max_energy),
+            np.array([np.inf]),
+            np.ones(count),
+        )
+    )
+    integrality = np.zeros(variable_count, dtype=int)
+    integrality[mode_start:] = 1
+    constraint_matrix = np.vstack(
+        (equality, peak_rows, charge_mode_rows, discharge_mode_rows)
+    )
+    constraint_lower = np.concatenate(
+        (equality_rhs, np.full(3 * count, -np.inf))
+    )
+    constraint_upper = np.concatenate(
+        (
+            equality_rhs,
+            np.zeros(count),
+            np.zeros(count),
+            np.full(count, battery.max_discharge_kw),
+        )
+    )
+    result = milp(
+        c=objective,
+        integrality=integrality,
+        bounds=Bounds(lower_bounds, upper_bounds),
+        constraints=LinearConstraint(
+            constraint_matrix, constraint_lower, constraint_upper
+        ),
+        options={"disp": False},
     )
     if not result.success or result.x is None:
         raise ValueError(f"storage optimization failed: {result.message}")
@@ -554,18 +594,23 @@ def optimize_dispatch(
         energy,
         battery,
         tariff,
-        method="scipy_highs_linprog",
+        method="scipy_highs_milp",
     )
+    solver: dict[str, object] = {
+        "method": "scipy_highs_milp",
+        "success": True,
+        "status": int(result.status),
+        "message": str(result.message),
+        "objective_value": float(result.fun),
+    }
+    for name in ("mip_node_count", "mip_dual_bound", "mip_gap"):
+        value = getattr(result, name, None)
+        if value is not None and np.isfinite(value):
+            solver[name] = int(value) if name == "mip_node_count" else float(value)
     return DispatchResult(
         schedule=dispatch.schedule,
         metrics=dispatch.metrics,
-        solver={
-            "method": "scipy_highs_linprog",
-            "success": True,
-            "status": int(result.status),
-            "message": str(result.message),
-            "objective_value": float(result.fun),
-        },
+        solver=solver,
     )
 
 
@@ -628,7 +673,7 @@ def run_storage_scenarios(
     summary: dict[str, object] = {
         "assumption_source": tariff.source,
         "primary_scenario": "p50",
-        "solver_method": "scipy_highs_linprog",
+        "solver_method": "scipy_highs_milp",
         "battery_config": asdict(battery),
         "tariff_config": asdict(tariff),
         "results": result_rows,
