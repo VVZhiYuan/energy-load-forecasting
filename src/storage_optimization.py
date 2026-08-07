@@ -112,6 +112,15 @@ class TariffConfig:
                 raise ValueError(f"{field} must be finite and non-negative")
 
 
+@dataclass(frozen=True)
+class DispatchResult:
+    """One feasible battery dispatch and its operational metrics."""
+
+    schedule: pd.DataFrame
+    metrics: dict[str, float | int]
+    solver: dict[str, object]
+
+
 def validate_forecast_frame(frame: pd.DataFrame) -> pd.DataFrame:
     """Validate and normalize a 24-hour quantile forecast table."""
 
@@ -186,4 +195,260 @@ def build_tariff_schedule(
     ).astype(float)
     return pd.DataFrame(
         {"tariff_period": periods, "energy_price": prices}, index=index
+    )
+
+
+def _validate_dispatch_inputs(
+    load: pd.Series,
+    tariff_schedule: pd.DataFrame,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+) -> tuple[pd.Series, pd.DataFrame]:
+    battery.validate()
+    tariff.validate()
+    if not isinstance(load, pd.Series) or not isinstance(load.index, pd.DatetimeIndex):
+        raise ValueError("load must be a timestamp-indexed pandas Series")
+    if load.empty or load.index.hasnans or not load.index.is_unique:
+        raise ValueError("load must have non-empty unique timestamps")
+    numeric_load = pd.to_numeric(load, errors="coerce").astype(float)
+    if not np.isfinite(numeric_load.to_numpy()).all() or (numeric_load < 0).any():
+        raise ValueError("load must contain finite non-negative values")
+    if not isinstance(tariff_schedule, pd.DataFrame):
+        raise ValueError("tariff_schedule must be a pandas DataFrame")
+    required = ("tariff_period", "energy_price")
+    missing = [column for column in required if column not in tariff_schedule]
+    if missing:
+        raise ValueError("tariff_schedule is missing: " + ", ".join(missing))
+    if not tariff_schedule.index.equals(numeric_load.index):
+        raise ValueError("tariff_schedule must be aligned with load timestamps")
+    schedule = tariff_schedule.loc[:, required].copy()
+    schedule["energy_price"] = pd.to_numeric(
+        schedule["energy_price"], errors="coerce"
+    ).astype(float)
+    if (
+        schedule["tariff_period"].isna().any()
+        or not np.isfinite(schedule["energy_price"].to_numpy()).all()
+        or (schedule["energy_price"] < 0).any()
+    ):
+        raise ValueError("tariff_schedule contains invalid tariff values")
+    numeric_load.name = "forecast_load_kw"
+    return numeric_load, schedule
+
+
+def summarize_dispatch(
+    schedule: pd.DataFrame,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+) -> dict[str, float | int]:
+    """Calculate comparable energy, peak, throughput, and SOC metrics."""
+
+    battery.validate()
+    tariff.validate()
+    required = (
+        "grid_import_kw",
+        "charge_kw",
+        "discharge_kw",
+        "soc",
+        "energy_price",
+    )
+    missing = [column for column in required if column not in schedule]
+    if missing:
+        raise ValueError("dispatch schedule is missing: " + ", ".join(missing))
+    values = schedule.loc[:, required].apply(pd.to_numeric, errors="coerce")
+    if not np.isfinite(values.to_numpy(dtype=float)).all():
+        raise ValueError("dispatch schedule must contain finite values")
+    if (values.loc[:, ("grid_import_kw", "charge_kw", "discharge_kw")] < 0).any().any():
+        raise ValueError("dispatch powers must be non-negative")
+
+    interval_hours = battery.interval_hours
+    energy_cost = float(
+        (
+            values["grid_import_kw"]
+            * values["energy_price"]
+            * interval_hours
+        ).sum()
+    )
+    charge_energy = float((values["charge_kw"] * interval_hours).sum())
+    discharge_energy = float((values["discharge_kw"] * interval_hours).sum())
+    throughput = charge_energy + discharge_energy
+    peak_import = float(values["grid_import_kw"].max())
+    simultaneous = (
+        (values["charge_kw"] > 1e-9) & (values["discharge_kw"] > 1e-9)
+    ).sum()
+    return {
+        "total_energy_cost": energy_cost,
+        "peak_import_kw": peak_import,
+        "objective_value": float(
+            energy_cost
+            + tariff.peak_import_penalty * peak_import
+            + tariff.throughput_cost * throughput
+        ),
+        "battery_charge_kwh": charge_energy,
+        "battery_discharge_kwh": discharge_energy,
+        "battery_throughput_kwh": throughput,
+        "min_soc": float(values["soc"].min()),
+        "max_soc": float(values["soc"].max()),
+        "terminal_soc": float(values["soc"].iloc[-1]),
+        "simultaneous_activity_count": int(simultaneous),
+    }
+
+
+def _build_dispatch_result(
+    load: pd.Series,
+    tariff_schedule: pd.DataFrame,
+    charge_kw: np.ndarray,
+    discharge_kw: np.ndarray,
+    battery_energy_kwh: np.ndarray,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+    method: str,
+) -> DispatchResult:
+    grid_import = load.to_numpy(dtype=float) + charge_kw - discharge_kw
+    if (grid_import < -1e-8).any():
+        raise ValueError("dispatch would require negative grid import")
+    schedule = pd.DataFrame(
+        {
+            "forecast_load_kw": load.to_numpy(dtype=float),
+            "grid_import_kw": np.maximum(grid_import, 0.0),
+            "charge_kw": charge_kw,
+            "discharge_kw": discharge_kw,
+            "battery_energy_kwh": battery_energy_kwh,
+            "soc": battery_energy_kwh / battery.capacity_kwh,
+            "tariff_period": tariff_schedule["tariff_period"].to_numpy(),
+            "energy_price": tariff_schedule["energy_price"].to_numpy(dtype=float),
+        },
+        index=load.index,
+    )
+    schedule.index.name = load.index.name or "forecast_timestamp"
+    schedule["interval_energy_cost"] = (
+        schedule["grid_import_kw"]
+        * schedule["energy_price"]
+        * battery.interval_hours
+    )
+    metrics = summarize_dispatch(schedule, battery, tariff)
+    return DispatchResult(
+        schedule=schedule,
+        metrics=metrics,
+        solver={"method": method, "success": True},
+    )
+
+
+def no_storage_dispatch(
+    load: pd.Series,
+    tariff_schedule: pd.DataFrame,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+) -> DispatchResult:
+    """Create the no-storage cost and peak baseline."""
+
+    numeric_load, schedule = _validate_dispatch_inputs(
+        load, tariff_schedule, battery, tariff
+    )
+    zeros = np.zeros(len(numeric_load), dtype=float)
+    energy = np.full(len(numeric_load), battery.initial_energy_kwh, dtype=float)
+    return _build_dispatch_result(
+        numeric_load,
+        schedule,
+        zeros,
+        zeros,
+        energy,
+        battery,
+        tariff,
+        method="no_storage",
+    )
+
+
+def rule_based_dispatch(
+    load: pd.Series,
+    tariff_schedule: pd.DataFrame,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+) -> DispatchResult:
+    """Charge off-peak and discharge at peak while preserving terminal reachability."""
+
+    numeric_load, schedule = _validate_dispatch_inputs(
+        load, tariff_schedule, battery, tariff
+    )
+    count = len(numeric_load)
+    loads = numeric_load.to_numpy(dtype=float)
+    periods = schedule["tariff_period"].to_numpy(dtype=object)
+    charges = np.zeros(count, dtype=float)
+    discharges = np.zeros(count, dtype=float)
+    energy = np.zeros(count, dtype=float)
+    current_energy = battery.initial_energy_kwh
+    min_energy = battery.capacity_kwh * battery.min_soc
+    max_energy = battery.capacity_kwh * battery.max_soc
+    target_energy = battery.terminal_energy_kwh
+    charge_increment = (
+        battery.charge_efficiency
+        * battery.max_charge_kw
+        * battery.interval_hours
+    )
+
+    for position in range(count):
+        remaining_loads = loads[position + 1 :]
+        remaining_charge_capacity = (count - position - 1) * charge_increment
+        remaining_discharge_capacity = float(
+            np.minimum(remaining_loads, battery.max_discharge_kw).sum()
+            * battery.interval_hours
+            / battery.discharge_efficiency
+        )
+        reachable_lower = max(
+            min_energy, target_energy - remaining_charge_capacity
+        )
+        reachable_upper = min(
+            max_energy, target_energy + remaining_discharge_capacity
+        )
+        max_charge_energy = min(
+            max_energy - current_energy,
+            charge_increment,
+        )
+        max_discharge_energy = min(
+            current_energy - min_energy,
+            battery.max_discharge_kw
+            * battery.interval_hours
+            / battery.discharge_efficiency,
+            loads[position]
+            * battery.interval_hours
+            / battery.discharge_efficiency,
+        )
+        action_lower = current_energy - max_discharge_energy
+        action_upper = current_energy + max_charge_energy
+        lower = max(action_lower, reachable_lower)
+        upper = min(action_upper, reachable_upper)
+        if lower > upper + 1e-8:
+            raise ValueError(
+                "rule-based strategy cannot reach terminal SOC with this load"
+            )
+
+        if periods[position] == "off_peak":
+            requested_energy = action_upper
+        elif periods[position] == "peak":
+            requested_energy = action_lower
+        else:
+            requested_energy = current_energy
+        next_energy = float(np.clip(requested_energy, lower, upper))
+        energy_change = next_energy - current_energy
+        if energy_change >= 0.0:
+            charges[position] = energy_change / (
+                battery.charge_efficiency * battery.interval_hours
+            )
+        else:
+            discharges[position] = -energy_change * battery.discharge_efficiency / (
+                battery.interval_hours
+            )
+        energy[position] = next_energy
+        current_energy = next_energy
+
+    if not np.isclose(current_energy, target_energy, atol=1e-8):
+        raise ValueError("rule-based strategy did not reach terminal SOC")
+    return _build_dispatch_result(
+        numeric_load,
+        schedule,
+        charges,
+        discharges,
+        energy,
+        battery,
+        tariff,
+        method="rule_based",
     )

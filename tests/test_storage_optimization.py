@@ -4,8 +4,12 @@ import pytest
 
 from src.storage_optimization import (
     BatteryConfig,
+    DispatchResult,
     TariffConfig,
     build_tariff_schedule,
+    no_storage_dispatch,
+    rule_based_dispatch,
+    summarize_dispatch,
     validate_forecast_frame,
 )
 from src.config import OPTIMIZATION_DIR
@@ -272,3 +276,151 @@ def test_tariff_schedule_rejects_missing_timestamps():
 
     with pytest.raises(ValueError, match="present"):
         build_tariff_schedule(index, TariffConfig())
+
+
+def make_load_and_tariff() -> tuple[pd.Series, pd.DataFrame]:
+    forecast = make_forecast_frame()
+    return forecast["p50"], build_tariff_schedule(forecast.index, TariffConfig())
+
+
+def test_no_storage_preserves_load_and_has_zero_battery_activity():
+    load, tariff_schedule = make_load_and_tariff()
+
+    result = no_storage_dispatch(
+        load, tariff_schedule, BatteryConfig(), TariffConfig()
+    )
+
+    assert isinstance(result, DispatchResult)
+    np.testing.assert_allclose(result.schedule["grid_import_kw"], load)
+    assert result.schedule["charge_kw"].eq(0.0).all()
+    assert result.schedule["discharge_kw"].eq(0.0).all()
+    assert result.schedule["battery_energy_kwh"].eq(250.0).all()
+    assert result.metrics["terminal_soc"] == pytest.approx(0.50)
+    assert result.metrics["battery_throughput_kwh"] == pytest.approx(0.0)
+    assert result.solver["success"] is True
+
+
+def test_no_storage_cost_and_objective_are_calculated_from_grid_import():
+    load, tariff_schedule = make_load_and_tariff()
+
+    result = no_storage_dispatch(
+        load, tariff_schedule, BatteryConfig(), TariffConfig()
+    )
+
+    expected_energy_cost = (
+        result.schedule["grid_import_kw"]
+        * result.schedule["energy_price"]
+        * 0.25
+    ).sum()
+    expected_peak = result.schedule["grid_import_kw"].max()
+    assert result.metrics["total_energy_cost"] == pytest.approx(expected_energy_cost)
+    assert result.metrics["peak_import_kw"] == pytest.approx(expected_peak)
+    assert result.metrics["objective_value"] == pytest.approx(
+        expected_energy_cost + 5.0 * expected_peak
+    )
+
+
+def test_rule_strategy_is_feasible_and_returns_to_terminal_soc():
+    load, tariff_schedule = make_load_and_tariff()
+
+    result = rule_based_dispatch(
+        load, tariff_schedule, BatteryConfig(), TariffConfig()
+    )
+    schedule = result.schedule
+
+    np.testing.assert_allclose(
+        schedule["grid_import_kw"],
+        schedule["forecast_load_kw"]
+        + schedule["charge_kw"]
+        - schedule["discharge_kw"],
+        atol=1e-9,
+    )
+    assert (schedule["grid_import_kw"] >= 0.0).all()
+    assert (schedule["charge_kw"] <= 100.0 + 1e-9).all()
+    assert (schedule["discharge_kw"] <= 100.0 + 1e-9).all()
+    assert schedule["soc"].between(0.10 - 1e-9, 0.90 + 1e-9).all()
+    assert result.metrics["terminal_soc"] == pytest.approx(0.50, abs=1e-9)
+    assert result.metrics["simultaneous_activity_count"] == 0
+
+
+def test_rule_strategy_uses_off_peak_charging_and_peak_discharging():
+    load, tariff_schedule = make_load_and_tariff()
+
+    result = rule_based_dispatch(
+        load, tariff_schedule, BatteryConfig(), TariffConfig()
+    )
+
+    schedule = result.schedule
+    assert schedule.loc[schedule["tariff_period"].eq("off_peak"), "charge_kw"].gt(
+        0.0
+    ).any()
+    assert schedule.loc[schedule["tariff_period"].eq("peak"), "discharge_kw"].gt(
+        0.0
+    ).any()
+
+
+def test_rule_strategy_stored_energy_follows_battery_dynamics():
+    load, tariff_schedule = make_load_and_tariff()
+    battery = BatteryConfig()
+
+    result = rule_based_dispatch(load, tariff_schedule, battery, TariffConfig())
+    schedule = result.schedule
+    expected = np.empty(len(schedule))
+    previous = battery.initial_energy_kwh
+    for position, row in enumerate(schedule.itertuples()):
+        previous += (
+            battery.charge_efficiency * row.charge_kw * battery.interval_hours
+            - row.discharge_kw
+            * battery.interval_hours
+            / battery.discharge_efficiency
+        )
+        expected[position] = previous
+
+    np.testing.assert_allclose(schedule["battery_energy_kwh"], expected, atol=1e-9)
+
+
+def test_rule_strategy_objective_includes_throughput_cost():
+    load, tariff_schedule = make_load_and_tariff()
+    tariff = TariffConfig(throughput_cost=0.50)
+
+    result = rule_based_dispatch(load, tariff_schedule, BatteryConfig(), tariff)
+
+    assert result.metrics["battery_throughput_kwh"] > 0.0
+    expected = (
+        result.metrics["total_energy_cost"]
+        + tariff.peak_import_penalty * result.metrics["peak_import_kw"]
+        + tariff.throughput_cost * result.metrics["battery_throughput_kwh"]
+    )
+    assert result.metrics["objective_value"] == pytest.approx(expected)
+
+
+def test_rule_strategy_rejects_unreachable_terminal_soc_without_grid_export():
+    load, tariff_schedule = make_load_and_tariff()
+    low_load = pd.Series(1.0, index=load.index)
+    battery = BatteryConfig(initial_soc=0.90, terminal_soc=0.10)
+
+    with pytest.raises(ValueError, match="cannot reach terminal SOC"):
+        rule_based_dispatch(low_load, tariff_schedule, battery, TariffConfig())
+
+
+def test_summarize_rejects_simultaneous_charge_and_discharge():
+    load, tariff_schedule = make_load_and_tariff()
+    result = no_storage_dispatch(
+        load, tariff_schedule, BatteryConfig(), TariffConfig()
+    )
+    invalid = result.schedule.copy()
+    invalid.loc[invalid.index[0], "charge_kw"] = 1.0
+    invalid.loc[invalid.index[0], "discharge_kw"] = 1.0
+
+    summary = summarize_dispatch(invalid, BatteryConfig(), TariffConfig())
+
+    assert summary["simultaneous_activity_count"] == 1
+
+
+def test_dispatch_rejects_misaligned_tariff_schedule():
+    load, tariff_schedule = make_load_and_tariff()
+    misaligned = tariff_schedule.copy()
+    misaligned.index = misaligned.index + pd.Timedelta(minutes=15)
+
+    with pytest.raises(ValueError, match="aligned"):
+        no_storage_dispatch(load, misaligned, BatteryConfig(), TariffConfig())
