@@ -27,8 +27,8 @@ from src.dashboard_data import (
 METER = "MT_252"
 PLOTLY_LAYOUT = {
     "template": "plotly_white",
-    "margin": {"l": 42, "r": 18, "t": 42, "b": 38},
-    "legend": {"orientation": "h", "y": 1.1},
+    "margin": {"l": 42, "r": 18, "t": 88, "b": 38},
+    "legend": {"orientation": "h", "y": 1.12, "x": 0, "xanchor": "left"},
 }
 
 
@@ -89,7 +89,11 @@ def _forecast_figure(forecast: pd.DataFrame, title: str) -> go.Figure:
             name="P50 forecast",
         )
     )
-    figure.update_layout(title=title, yaxis_title="Load (kW)", **PLOTLY_LAYOUT)
+    figure.update_layout(
+        title={"text": title, "x": 0, "xanchor": "left", "y": 0.99, "yanchor": "top"},
+        yaxis_title="Load (kW)",
+        **PLOTLY_LAYOUT,
+    )
     return figure
 
 

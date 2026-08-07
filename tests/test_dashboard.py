@@ -72,6 +72,20 @@ class _FakeStreamlit:
         self.infos.append(message)
 
 
+def test_forecast_figure_reserves_space_between_title_and_legend():
+    forecast = pd.DataFrame(
+        {"p10": [90.0, 91.0], "p50": [100.0, 101.0], "p90": [110.0, 111.0]},
+        index=pd.date_range("2025-01-01", periods=2, freq="h"),
+    )
+
+    figure = dashboard._forecast_figure(forecast, "LightGBM forecast for MT_252 (1h)")
+
+    assert figure.layout.margin.t >= 80
+    assert figure.layout.title.y < figure.layout.legend.y
+    assert figure.layout.title.x == 0
+    assert figure.layout.legend.x == 0
+
+
 def test_main_renders_four_tabs_and_storage_disclaimer():
     fake = _FakeStreamlit()
     forecast = pd.DataFrame(
