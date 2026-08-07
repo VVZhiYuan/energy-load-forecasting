@@ -4,6 +4,10 @@ This portfolio project builds an AI-based forecasting pipeline for short-term el
 
 The project is designed for smart energy, green technology, and AI-driven energy management applications, especially for roles related to smart grid operation, building energy management, renewable energy operation, storage scheduling, and electricity price optimization.
 
+> **Portfolio quick read:** [open the portfolio guide](docs/PORTFOLIO_GUIDE.md)
+> for the architecture, experiment results, AI connection, resume bullets, and
+> a two-minute interview explanation.
+
 ## Current Project Status
 
 This repository is currently a working portfolio prototype rather than a
