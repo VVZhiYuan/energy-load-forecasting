@@ -121,8 +121,35 @@ def _forecast_figure(forecast: pd.DataFrame, title: str) -> go.Figure:
     return figure
 
 
+def _show_agent_analysis(
+    forecast: pd.DataFrame,
+    metadata: dict[str, Any],
+    comparison: pd.DataFrame,
+) -> None:
+    st.subheader("AI operations interpretation")
+    try:
+        response = _build_offline_agent_response(forecast, metadata, comparison)
+    except (TypeError, ValueError, DashboardReportError, RuntimeError) as exc:
+        st.warning(f"AI operations interpretation unavailable: {exc}")
+        return
+
+    content = response.content
+    st.info("Offline mock analysis is active. No external API or local model was called.")
+    columns = st.columns(3)
+    columns[0].metric("Provider", f"{response.provider} / {response.model}")
+    columns[1].metric("Forecast peak", f"{float(content['peak_prediction']):.1f} kW")
+    columns[2].metric("Mean uncertainty", f"{float(content['mean_interval_width']):.1f} kW")
+
+    peak_timestamp = pd.to_datetime(content["peak_timestamp"]).strftime("%Y-%m-%d %H:%M")
+    st.caption(f"Peak window: {peak_timestamp}")
+    st.write("Operational recommendations")
+    for recommendation in content.get("recommendations", []):
+        st.write(f"- {recommendation}")
+
+
 def _show_forecast(horizon: str, family: str) -> None:
     try:
+        comparison = load_model_comparison(METER, horizon)
         if family == "GRU":
             forecast = _load_gru_forecast(horizon)
             metadata = load_gru_metrics(METER, horizon)
@@ -131,7 +158,6 @@ def _show_forecast(horizon: str, family: str) -> None:
             model_label = "GRU"
         else:
             forecast, metadata = load_forecast_report(METER, horizon)
-            comparison = load_model_comparison(METER, horizon)
             selected = comparison.loc[comparison["selected"].astype(bool)]
             best = selected.iloc[0] if not selected.empty else comparison.iloc[0]
             test_mae = float(best["test_mae"])
@@ -150,6 +176,7 @@ def _show_forecast(horizon: str, family: str) -> None:
         _forecast_figure(forecast, f"{model_label} forecast for {METER} ({horizon})"),
         use_container_width=True,
     )
+    _show_agent_analysis(forecast, metadata, comparison)
     st.download_button(
         "Download forecast CSV",
         data=_csv_bytes(forecast),

@@ -31,6 +31,12 @@ class _FakeStreamlit:
     def title(self, *_args, **_kwargs):
         pass
 
+    def subheader(self, *_args, **_kwargs):
+        pass
+
+    def write(self, *_args, **_kwargs):
+        pass
+
     def caption(self, *_args, **_kwargs):
         pass
 
@@ -92,6 +98,44 @@ def test_build_offline_agent_response_forces_mock_provider(monkeypatch):
     assert response.model == "offline-mock"
     assert response.content["peak_prediction"] == 120.0
     assert response.content["mean_interval_width"] == 30.0
+
+
+def test_show_agent_analysis_renders_offline_summary():
+    fake = _FakeStreamlit()
+    forecast = pd.DataFrame(
+        {"step": [1, 2], "prediction": [100.0, 120.0], "p10": [90.0, 100.0], "p90": [110.0, 140.0]},
+        index=pd.date_range("2025-01-01", periods=2, freq="h"),
+    )
+    comparison = pd.DataFrame([{"model": "LightGBM", "selected": True}])
+
+    with patch.object(dashboard, "st", fake):
+        dashboard._show_agent_analysis(
+            forecast,
+            {"selected_model": "LightGBM", "horizon": "1h"},
+            comparison,
+        )
+
+    assert any("Offline mock" in message for message in fake.infos)
+    assert not fake.warnings
+
+
+def test_show_agent_analysis_warns_without_breaking_forecast(monkeypatch):
+    fake = _FakeStreamlit()
+    forecast = pd.DataFrame(
+        {"step": [1], "prediction": [100.0], "p10": [90.0], "p90": [110.0]},
+        index=pd.date_range("2025-01-01", periods=1, freq="h"),
+    )
+    comparison = pd.DataFrame([{"model": "LightGBM", "selected": True}])
+
+    def raise_context_error(*_args, **_kwargs):
+        raise ValueError("invalid context")
+
+    monkeypatch.setattr(dashboard, "_build_offline_agent_response", raise_context_error)
+
+    with patch.object(dashboard, "st", fake):
+        dashboard._show_agent_analysis(forecast, {}, comparison)
+
+    assert fake.warnings == ["AI operations interpretation unavailable: invalid context"]
 
 
 def test_forecast_figure_reserves_space_between_title_and_legend():
