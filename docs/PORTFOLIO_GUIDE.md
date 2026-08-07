@@ -60,10 +60,14 @@ The current AI components are:
 - Lead-wise residual calibration for P10/P50/P90 uncertainty intervals.
 - A disabled-by-default Agent interface that summarizes peaks, uncertainty,
   model comparison, and robustness results from saved JSON/CSV artifacts.
+- A Forecast-tab offline mock Agent interpretation for a no-API portfolio
+  demonstration.
 
 The next AI extension is to connect the Agent to a fixed company-approved API
-or a local model. The interface boundary already exists, so the provider can be
-changed without changing the forecasting or optimization code.
+or a local model. The dashboard currently uses an offline mock interpretation
+and does not call an external API. A future OpenAI-compatible endpoint can be
+enabled with `ENERGY_AI_PROVIDER`, `ENERGY_AI_BASE_URL`, and `ENERGY_AI_MODEL`
+after the endpoint is available.
 
 ## Demo Path
 
@@ -74,7 +78,8 @@ python -m streamlit run dashboard.py
 
 Open `http://localhost:8501` and inspect:
 
-1. **Forecast**: switch between Classical and GRU and inspect P10/P50/P90.
+1. **Forecast**: switch between Classical and GRU, inspect P10/P50/P90, and
+   read the offline mock Agent interpretation.
 2. **Model Comparison**: compare validation and untouched-test errors.
 3. **Robustness**: inspect degradation under missing blocks, spikes, noise,
    and distribution shift.

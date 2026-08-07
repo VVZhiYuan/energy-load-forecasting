@@ -141,7 +141,7 @@ def test_show_agent_analysis_warns_without_breaking_forecast(monkeypatch):
 def test_show_forecast_gru_survives_comparison_failure(monkeypatch):
     fake = _FakeStreamlit()
     forecast = pd.DataFrame(
-        {"prediction": [100.0], "p10": [90.0], "p50": [100.0], "p90": [110.0]},
+        {"step": [1], "prediction": [100.0], "p10": [90.0], "p50": [100.0], "p90": [110.0]},
         index=pd.to_datetime(["2025-01-01 00:15:00"]),
     )
     metadata = {"test_metrics": {"MAE": 3.0, "RMSE": 4.0}}
@@ -184,7 +184,7 @@ def test_forecast_figure_reserves_space_between_title_and_legend():
 def test_main_renders_four_tabs_and_storage_disclaimer():
     fake = _FakeStreamlit()
     forecast = pd.DataFrame(
-        {"prediction": [100.0], "p10": [90.0], "p50": [100.0], "p90": [110.0]},
+        {"step": [1], "prediction": [100.0], "p10": [90.0], "p50": [100.0], "p90": [110.0]},
         index=pd.to_datetime(["2025-01-01 00:15:00"]),
     )
     comparison = pd.DataFrame(
@@ -204,6 +204,7 @@ def test_main_renders_four_tabs_and_storage_disclaimer():
         dashboard.main()
 
     assert fake.tabs_seen == ["Forecast", "Model Comparison", "Robustness", "Storage"]
+    assert any("Offline mock" in message for message in fake.infos)
     assert any("Synthetic-demo" in message for message in fake.infos)
 
 

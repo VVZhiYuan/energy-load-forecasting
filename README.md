@@ -161,6 +161,11 @@ on the labelled `synthetic_demo` tariff and battery assumptions. See the
 [official Streamlit installation guide](https://docs.streamlit.io/get-started/installation)
 for environment details.
 
+The Forecast tab includes an offline mock Agent interpretation. It does not
+call an external API. A future local or company-approved OpenAI-compatible
+endpoint can be enabled with `ENERGY_AI_PROVIDER`, `ENERGY_AI_BASE_URL`, and
+`ENERGY_AI_MODEL` after the endpoint is available.
+
 In VS Code, select `.venv\Scripts\python.exe` as the notebook kernel and open
 `notebooks/01_eda.ipynb`, `notebooks/02_baseline_models.ipynb`, then
 `notebooks/03_ml_models.ipynb`.
@@ -507,6 +512,11 @@ python analyze_latest.py --report-dir reports/predictions/MT_252/1h --provider m
 Both commands write `agent_analysis.json` into the report directory. The
 generated mock example is available at
 `reports/predictions/MT_252/1h/agent_analysis.json`.
+
+The Streamlit Forecast tab also shows an offline mock Agent interpretation for
+portfolio demonstrations. That dashboard path is deterministic and does not
+call a hosted API or local model, so it is safe to run before a home GPU model
+is available.
 
 For a future hosted API, use an OpenAI-compatible Chat Completions endpoint.
 Keep the key in the process environment rather than the repository:
