@@ -57,6 +57,15 @@ schedule. Each 15-minute interval receives an off-peak, shoulder, or peak
 energy price from its timestamp. The configuration also includes a peak-demand
 penalty and a small battery throughput cost.
 
+The reproducible defaults use generic currency units rather than claiming a
+specific utility tariff:
+
+- Off-peak: 00:00-07:00 and 23:00-24:00 at 0.60 units/kWh.
+- Shoulder: 07:00-17:00 and 21:00-23:00 at 1.00 units/kWh.
+- Peak: 17:00-21:00 at 1.50 units/kWh.
+- Peak-import penalty: 5.00 units/kW over the 24-hour planning horizon.
+- Battery throughput cost: 0.02 units/kWh charged or discharged.
+
 Every report records the complete battery and tariff configuration and labels
 the source as synthetic_demo.
 
