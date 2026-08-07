@@ -10,3 +10,4 @@ holidays>=0.50
 pytest>=8.0.0
 lightgbm>=4.7.0
 shap>=0.46.0
+scipy>=1.9.0
