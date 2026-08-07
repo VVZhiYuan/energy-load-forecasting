@@ -72,6 +72,9 @@ def test_load_scaler_fits_training_inputs_only_and_preserves_shapes():
         {"batch_size": 0},
         {"epochs": 0},
         {"learning_rate": 0.0},
+        {"learning_rate": np.nan},
+        {"learning_rate": np.inf},
+        {"learning_rate": -np.inf},
         {"patience": 0},
         {"epochs": 3, "patience": 3},
     ],
@@ -100,3 +103,10 @@ def test_sequence_windows_reject_malformed_series(series):
 def test_sequence_windows_rejects_series_without_a_complete_window():
     with pytest.raises(ValueError, match="too short"):
         make_sequence_windows(make_series(99), horizon=4, context_steps=96)
+
+
+def test_split_sequence_windows_rejects_mismatched_horizon():
+    windows = make_sequence_windows(make_series(1500), horizon=96, context_steps=96)
+
+    with pytest.raises(ValueError, match="horizon"):
+        split_sequence_windows(windows, horizon=1)

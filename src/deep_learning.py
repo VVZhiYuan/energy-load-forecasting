@@ -59,6 +59,7 @@ class GRUConfig:
         if (
             not isinstance(self.learning_rate, Real)
             or isinstance(self.learning_rate, bool)
+            or not np.isfinite(float(self.learning_rate))
             or self.learning_rate <= 0
         ):
             raise ValueError("learning_rate must be positive.")
@@ -193,10 +194,18 @@ def split_sequence_windows(
     if not isinstance(source_index, pd.DatetimeIndex):
         raise ValueError("full_index must be a DatetimeIndex.")
 
-    target_horizon = horizon if horizon is not None else windows.horizon
-    if target_horizon is None:
-        target_horizon = windows.targets.shape[1]
-    target_horizon = _positive_integer(target_horizon, "horizon")
+    if horizon is not None:
+        target_horizon = _positive_integer(horizon, "horizon")
+        if (
+            target_horizon != windows.targets.shape[1]
+            or (windows.horizon is not None and target_horizon != windows.horizon)
+        ):
+            raise ValueError("horizon must match the sequence windows targets.")
+    else:
+        target_horizon = windows.horizon
+        if target_horizon is None:
+            target_horizon = windows.targets.shape[1]
+        target_horizon = _positive_integer(target_horizon, "horizon")
 
     aligned_features = pd.DataFrame(
         {"window_row": np.arange(len(windows.index), dtype=np.int64)},
