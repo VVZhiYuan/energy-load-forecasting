@@ -1,5 +1,7 @@
 # AI-Based Short-Term Electricity Load Forecasting
 
+[![CI](https://github.com/VVZhiYuan/energy-load-forecasting/actions/workflows/ci.yml/badge.svg)](https://github.com/VVZhiYuan/energy-load-forecasting/actions/workflows/ci.yml)
+
 This portfolio project builds an AI-based forecasting pipeline for short-term electricity load prediction using the UCI ElectricityLoadDiagrams20112014 dataset.
 
 The project is designed for smart energy, green technology, and AI-driven energy management applications, especially for roles related to smart grid operation, building energy management, renewable energy operation, storage scheduling, and electricity price optimization.
