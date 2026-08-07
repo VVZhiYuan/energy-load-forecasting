@@ -20,7 +20,7 @@ finished commercial energy platform.
 | Robustness analysis | Complete | Deterministic noise, missing-block, spike, and distribution-shift scenarios with clean-future evaluation |
 | Storage optimization | Complete | P10/P50/P90 battery dispatch, no-storage and rule baselines, HiGHS mixed-integer linear programming, CSV/PNG/JSON reports |
 | Deep learning benchmark | Complete | CUDA-enabled direct GRU for 1h/24h, leakage-safe windows, validation-residual intervals, and report artifacts |
-| Dashboard | Planned | Streamlit interface for forecasts, robustness, and storage decisions |
+| Dashboard | Complete | Read-only Streamlit workbench for forecasts, model comparison, robustness, and storage decisions |
 
 ## System Architecture
 
@@ -48,6 +48,10 @@ UCI or custom 15-minute load data
   (no-storage / rule baseline / HiGHS MILP battery dispatch)
              |
              +--> dispatch CSV / cost and peak metrics / P50 chart
+             |
+             v
+  read-only Streamlit dashboard
+  (forecast / comparison / robustness / storage)
              |
              v
   optional AI Agent
@@ -78,6 +82,7 @@ silently modify its predictions.
 - `analyze_latest.py`: runs the Agent against a saved report without rerunning the numerical forecast.
 - `optimize_storage.py`: turns a saved 24-hour forecast into atomic storage-dispatch report artifacts.
 - `deep_learning_benchmark.py`: runs the optional 1h/24h GRU benchmark on the selected meter.
+- `dashboard.py`: presents committed forecast, GRU, robustness, and storage artifacts in a local read-only workbench.
 
 ## End-To-End Example
 
@@ -135,6 +140,22 @@ python -m nbconvert --to notebook --execute --inplace notebooks\02_baseline_mode
 python -m nbconvert --to notebook --execute --inplace notebooks\03_ml_models.ipynb --ExecutePreprocessor.timeout=3600
 python -m pytest -v
 ```
+
+### Launch The Dashboard
+
+After installing the requirements, start the local portfolio dashboard:
+
+```powershell
+python -m streamlit run dashboard.py
+```
+
+Open `http://localhost:8501`. The four views are **Forecast**, **Model
+Comparison**, **Robustness**, and **Storage**. The dashboard only reads
+committed files under `reports/`; it does not train models, call external APIs,
+download data, or modify report artifacts. The storage view is explicitly based
+on the labelled `synthetic_demo` tariff and battery assumptions. See the
+[official Streamlit installation guide](https://docs.streamlit.io/get-started/installation)
+for environment details.
 
 In VS Code, select `.venv\Scripts\python.exe` as the notebook kernel and open
 `notebooks/01_eda.ipynb`, `notebooks/02_baseline_models.ipynb`, then
@@ -629,9 +650,14 @@ energy-load-forecasting/
   charge/discharge activity.
 - Next optimization upgrade: site-specific tariff/battery inputs.
 
-### Week 8: Dashboard
+### Week 8: Dashboard (Completed)
 
-- Streamlit demo for visualizing forecasts, errors, and energy insights.
+- Read-only Streamlit workbench completed for visualizing forecasts, model
+  errors, robustness scenarios, and forecast-driven storage decisions.
+- Sidebar controls completed for horizon, classical/GRU family, and storage
+  scenario.
+- Missing or malformed reports render an in-app unavailable state without
+  stopping other tabs.
 
 ### Week 9: Portfolio Packaging
 
