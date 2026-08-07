@@ -128,6 +128,10 @@ def make_small_partitions():
 
 @pytest.mark.skipif(deep_learning.torch is None, reason="PyTorch is not installed")
 def test_direct_gru_is_deterministic_and_restores_validation_best_checkpoint():
+    series = pd.Series(
+        20 + np.sin(np.arange(300) * 2 * np.pi / 24) + np.arange(300) * 0.01,
+        index=pd.date_range("2024-01-01", periods=300, freq="15min"),
+    )
     partitions = make_small_partitions()
     config = GRUConfig(
         context_steps=8,
@@ -155,6 +159,16 @@ def test_direct_gru_is_deterministic_and_restores_validation_best_checkpoint():
         )["MAE"]
     )
     np.testing.assert_allclose(first.validation_prediction, second.validation_prediction, atol=1e-6)
+
+    first_run = run_gru_benchmark(series, horizon=3, config=config)
+    second_run = run_gru_benchmark(series, horizon=3, config=config)
+
+    assert first_run.test_metrics == pytest.approx(second_run.test_metrics)
+    np.testing.assert_allclose(
+        first_run.latest_forecast[["prediction", "p10", "p50", "p90"]],
+        second_run.latest_forecast[["prediction", "p10", "p50", "p90"]],
+        atol=1e-6,
+    )
 
 
 @pytest.mark.skipif(deep_learning.torch is None, reason="PyTorch is not installed")
@@ -194,6 +208,7 @@ def test_residual_calibration_clips_negative_values_and_orders_quantiles():
     assert intervals.shape == (2, 2, 3)
     assert (intervals >= 0).all()
     assert np.all(np.diff(intervals, axis=2) >= 0)
+    np.testing.assert_allclose(intervals[:, :, 1], np.maximum(point_predictions, 0.0))
 
 
 def test_require_torch_raises_a_concise_installation_error(monkeypatch):

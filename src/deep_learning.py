@@ -422,9 +422,11 @@ def calibrate_residual_intervals(
     if residuals.shape[0] == 0:
         raise ValueError("validation_residuals must not be empty.")
 
-    residual_quantiles = np.quantile(residuals, [0.1, 0.5, 0.9], axis=0).T
-    intervals = np.maximum(points[:, :, None] + residual_quantiles[None, :, :], 0.0)
-    return np.sort(intervals, axis=2).astype(np.float32, copy=False)
+    lower_residual, upper_residual = np.quantile(residuals, [0.1, 0.9], axis=0)
+    p50 = np.maximum(points, 0.0)
+    p10 = np.minimum(np.maximum(points + lower_residual, 0.0), p50)
+    p90 = np.maximum(np.maximum(points + upper_residual, 0.0), p50)
+    return np.stack((p10, p50, p90), axis=2).astype(np.float32, copy=False)
 
 
 def run_gru_benchmark(
