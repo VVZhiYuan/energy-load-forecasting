@@ -166,6 +166,16 @@ call an external API. A future local or company-approved OpenAI-compatible
 endpoint can be enabled with `ENERGY_AI_PROVIDER`, `ENERGY_AI_BASE_URL`, and
 `ENERGY_AI_MODEL` after the endpoint is available.
 
+### Dashboard Preview
+
+| Forecast + offline Agent | Model comparison |
+| --- | --- |
+| ![Forecast tab with offline Agent interpretation](reports/dashboard/forecast_agent.png) | ![Model comparison tab](reports/dashboard/model_comparison.png) |
+
+| Robustness evidence | Storage dispatch |
+| --- | --- |
+| ![Robustness tab](reports/dashboard/robustness.png) | ![Storage dispatch tab](reports/dashboard/storage_dispatch.png) |
+
 In VS Code, select `.venv\Scripts\python.exe` as the notebook kernel and open
 `notebooks/01_eda.ipynb`, `notebooks/02_baseline_models.ipynb`, then
 `notebooks/03_ml_models.ipynb`.

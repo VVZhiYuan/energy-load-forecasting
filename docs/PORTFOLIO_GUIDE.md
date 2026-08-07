@@ -85,6 +85,9 @@ Open `http://localhost:8501` and inspect:
    and distribution shift.
 4. **Storage**: inspect P50 battery dispatch and cost/peak metrics.
 
+Dashboard screenshots are stored in `reports/dashboard/` and can be linked
+directly from the repository or copied into a slide deck.
+
 The storage section uses a clearly labelled `synthetic_demo` tariff and battery
 configuration. It demonstrates the optimization interface, not a site-specific
 commercial dispatch recommendation.
