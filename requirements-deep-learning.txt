@@ -1,0 +1,2 @@
+# Select a CPU or CUDA wheel for the host at pytorch.org/get-started/locally.
+torch>=2.0.0
