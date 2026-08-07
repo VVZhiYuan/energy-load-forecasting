@@ -8,7 +8,9 @@ from src.storage_optimization import (
     TariffConfig,
     build_tariff_schedule,
     no_storage_dispatch,
+    optimize_dispatch,
     rule_based_dispatch,
+    run_storage_scenarios,
     summarize_dispatch,
     validate_forecast_frame,
 )
@@ -424,3 +426,80 @@ def test_dispatch_rejects_misaligned_tariff_schedule():
 
     with pytest.raises(ValueError, match="aligned"):
         no_storage_dispatch(load, misaligned, BatteryConfig(), TariffConfig())
+
+
+def test_optimizer_satisfies_balance_bounds_and_terminal_energy():
+    load, tariff_schedule = make_load_and_tariff()
+    battery = BatteryConfig()
+
+    result = optimize_dispatch(load, tariff_schedule, battery, TariffConfig())
+    schedule = result.schedule
+
+    np.testing.assert_allclose(
+        schedule["grid_import_kw"],
+        schedule["forecast_load_kw"]
+        + schedule["charge_kw"]
+        - schedule["discharge_kw"],
+        atol=1e-7,
+    )
+    assert (schedule["grid_import_kw"] >= -1e-8).all()
+    assert (schedule["charge_kw"] <= battery.max_charge_kw + 1e-8).all()
+    assert (schedule["discharge_kw"] <= battery.max_discharge_kw + 1e-8).all()
+    assert schedule["soc"].between(
+        battery.min_soc - 1e-8, battery.max_soc + 1e-8
+    ).all()
+    assert result.metrics["terminal_soc"] == pytest.approx(
+        battery.terminal_soc, abs=1e-7
+    )
+    assert result.solver["success"] is True
+
+
+def test_optimized_objective_is_not_worse_than_no_storage():
+    load, tariff_schedule = make_load_and_tariff()
+    battery = BatteryConfig()
+    tariff = TariffConfig()
+
+    baseline = no_storage_dispatch(load, tariff_schedule, battery, tariff)
+    optimized = optimize_dispatch(load, tariff_schedule, battery, tariff)
+
+    assert optimized.metrics["objective_value"] <= (
+        baseline.metrics["objective_value"] + 1e-7
+    )
+
+
+def test_optimizer_is_deterministic_for_identical_inputs():
+    load, tariff_schedule = make_load_and_tariff()
+
+    first = optimize_dispatch(load, tariff_schedule, BatteryConfig(), TariffConfig())
+    second = optimize_dispatch(load, tariff_schedule, BatteryConfig(), TariffConfig())
+
+    pd.testing.assert_frame_equal(first.schedule, second.schedule)
+    assert first.metrics == second.metrics
+
+
+def test_runner_reports_three_scenarios_and_three_strategies():
+    dispatch, summary = run_storage_scenarios(
+        make_forecast_frame(), BatteryConfig(), TariffConfig()
+    )
+
+    assert set(dispatch["scenario"]) == {"p10", "p50", "p90"}
+    assert set(dispatch["strategy"]) == {
+        "no_storage",
+        "rule_based",
+        "optimized",
+    }
+    assert len(dispatch) == 96 * 9
+    assert len(summary["results"]) == 9
+    assert summary["primary_scenario"] == "p50"
+    assert summary["solver_method"] == "scipy_highs_linprog"
+    assert all("cost_savings" in row for row in summary["results"])
+    assert all("peak_reduction_kw" in row for row in summary["results"])
+
+
+def test_optimizer_rejects_infeasible_terminal_energy():
+    load, tariff_schedule = make_load_and_tariff()
+    low_load = pd.Series(1.0, index=load.index)
+    battery = BatteryConfig(initial_soc=0.90, terminal_soc=0.10)
+
+    with pytest.raises(ValueError, match="optimization failed"):
+        optimize_dispatch(low_load, tariff_schedule, battery, TariffConfig())

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from numbers import Real
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import linprog
 
 
 FORECAST_QUANTILES = ("p10", "p50", "p90")
@@ -452,3 +453,184 @@ def rule_based_dispatch(
         tariff,
         method="rule_based",
     )
+
+
+def optimize_dispatch(
+    load: pd.Series,
+    tariff_schedule: pd.DataFrame,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+) -> DispatchResult:
+    """Minimize energy, peak, and throughput costs with a linear battery model."""
+
+    numeric_load, schedule = _validate_dispatch_inputs(
+        load, tariff_schedule, battery, tariff
+    )
+    count = len(numeric_load)
+    loads = numeric_load.to_numpy(dtype=float)
+    prices = schedule["energy_price"].to_numpy(dtype=float)
+    charge_start = 0
+    discharge_start = count
+    grid_start = 2 * count
+    energy_start = 3 * count
+    peak_position = 4 * count
+    variable_count = peak_position + 1
+    interval_hours = battery.interval_hours
+
+    objective = np.zeros(variable_count, dtype=float)
+    objective[charge_start:discharge_start] = (
+        tariff.throughput_cost * interval_hours
+    )
+    objective[discharge_start:grid_start] = (
+        tariff.throughput_cost * interval_hours
+    )
+    objective[grid_start:energy_start] = prices * interval_hours
+    objective[peak_position] = tariff.peak_import_penalty
+
+    equality = np.zeros((count + 1, variable_count), dtype=float)
+    equality_rhs = np.zeros(count + 1, dtype=float)
+    for position in range(count):
+        equality[position, grid_start + position] = 1.0
+        equality[position, charge_start + position] = -1.0
+        equality[position, discharge_start + position] = 1.0
+        equality_rhs[position] = loads[position]
+
+    dynamics = np.zeros((count + 1, variable_count), dtype=float)
+    dynamics_rhs = np.zeros(count + 1, dtype=float)
+    for position in range(count):
+        dynamics[position, energy_start + position] = 1.0
+        dynamics[position, charge_start + position] = (
+            -battery.charge_efficiency * interval_hours
+        )
+        dynamics[position, discharge_start + position] = (
+            interval_hours / battery.discharge_efficiency
+        )
+        if position == 0:
+            dynamics_rhs[position] = battery.initial_energy_kwh
+        else:
+            dynamics[position, energy_start + position - 1] = -1.0
+    dynamics[count, energy_start + count - 1] = 1.0
+    dynamics_rhs[count] = battery.terminal_energy_kwh
+
+    equality = np.vstack((equality, dynamics))
+    equality_rhs = np.concatenate((equality_rhs, dynamics_rhs))
+    inequality = np.zeros((count, variable_count), dtype=float)
+    for position in range(count):
+        inequality[position, grid_start + position] = 1.0
+        inequality[position, peak_position] = -1.0
+
+    min_energy = battery.capacity_kwh * battery.min_soc
+    max_energy = battery.capacity_kwh * battery.max_soc
+    bounds = (
+        [(0.0, battery.max_charge_kw)] * count
+        + [(0.0, battery.max_discharge_kw)] * count
+        + [(0.0, None)] * count
+        + [(min_energy, max_energy)] * count
+        + [(0.0, None)]
+    )
+    result = linprog(
+        objective,
+        A_ub=inequality,
+        b_ub=np.zeros(count, dtype=float),
+        A_eq=equality,
+        b_eq=equality_rhs,
+        bounds=bounds,
+        method="highs",
+    )
+    if not result.success or result.x is None:
+        raise ValueError(f"storage optimization failed: {result.message}")
+
+    values = np.asarray(result.x, dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("storage optimization failed: solver returned non-finite values")
+    charges = np.maximum(values[charge_start:discharge_start], 0.0)
+    discharges = np.maximum(values[discharge_start:grid_start], 0.0)
+    energy = values[energy_start:peak_position]
+    dispatch = _build_dispatch_result(
+        numeric_load,
+        schedule,
+        charges,
+        discharges,
+        energy,
+        battery,
+        tariff,
+        method="scipy_highs_linprog",
+    )
+    return DispatchResult(
+        schedule=dispatch.schedule,
+        metrics=dispatch.metrics,
+        solver={
+            "method": "scipy_highs_linprog",
+            "success": True,
+            "status": int(result.status),
+            "message": str(result.message),
+            "objective_value": float(result.fun),
+        },
+    )
+
+
+def run_storage_scenarios(
+    forecast: pd.DataFrame,
+    battery: BatteryConfig,
+    tariff: TariffConfig,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run every strategy against the P10, P50, and P90 forecast scenarios."""
+
+    validated = validate_forecast_frame(forecast)
+    battery.validate()
+    tariff.validate()
+    tariff_schedule = build_tariff_schedule(validated.index, tariff)
+    dispatches: list[pd.DataFrame] = []
+    result_rows: list[dict[str, object]] = []
+    strategies = {
+        "no_storage": no_storage_dispatch,
+        "rule_based": rule_based_dispatch,
+        "optimized": optimize_dispatch,
+    }
+
+    for scenario in FORECAST_QUANTILES:
+        load = validated[scenario]
+        baseline = no_storage_dispatch(load, tariff_schedule, battery, tariff)
+        baseline_metrics = baseline.metrics
+        for strategy_name, strategy in strategies.items():
+            result = strategy(load, tariff_schedule, battery, tariff)
+            dispatch = result.schedule.copy()
+            dispatch.insert(0, "strategy", strategy_name)
+            dispatch.insert(0, "scenario", scenario)
+            dispatches.append(dispatch)
+            metrics = dict(result.metrics)
+            energy_cost = float(metrics["total_energy_cost"])
+            peak_import = float(metrics["peak_import_kw"])
+            baseline_cost = float(baseline_metrics["total_energy_cost"])
+            baseline_peak = float(baseline_metrics["peak_import_kw"])
+            result_rows.append(
+                {
+                    "scenario": scenario,
+                    "strategy": strategy_name,
+                    **metrics,
+                    "cost_savings": baseline_cost - energy_cost,
+                    "cost_savings_pct": (
+                        (baseline_cost - energy_cost) / baseline_cost * 100.0
+                        if baseline_cost > 0.0
+                        else 0.0
+                    ),
+                    "peak_reduction_kw": baseline_peak - peak_import,
+                    "peak_reduction_pct": (
+                        (baseline_peak - peak_import) / baseline_peak * 100.0
+                        if baseline_peak > 0.0
+                        else 0.0
+                    ),
+                    "solver": result.solver,
+                }
+            )
+
+    combined = pd.concat(dispatches).sort_index(kind="stable")
+    summary: dict[str, object] = {
+        "assumption_source": tariff.source,
+        "primary_scenario": "p50",
+        "solver_method": "scipy_highs_linprog",
+        "battery_config": asdict(battery),
+        "tariff_config": asdict(tariff),
+        "results": result_rows,
+    }
+    return combined, summary
