@@ -138,6 +138,35 @@ def test_show_agent_analysis_warns_without_breaking_forecast(monkeypatch):
     assert fake.warnings == ["AI operations interpretation unavailable: invalid context"]
 
 
+def test_show_forecast_gru_survives_comparison_failure(monkeypatch):
+    fake = _FakeStreamlit()
+    forecast = pd.DataFrame(
+        {"prediction": [100.0], "p10": [90.0], "p50": [100.0], "p90": [110.0]},
+        index=pd.to_datetime(["2025-01-01 00:15:00"]),
+    )
+    metadata = {"test_metrics": {"MAE": 3.0, "RMSE": 4.0}}
+    monkeypatch.setattr(dashboard, "_load_gru_forecast", lambda _horizon: forecast)
+    monkeypatch.setattr(dashboard, "load_gru_metrics", lambda _meter, _horizon: metadata)
+    monkeypatch.setattr(
+        dashboard,
+        "load_model_comparison",
+        lambda _meter, _horizon: (_ for _ in ()).throw(DashboardReportError("comparison.csv missing")),
+    )
+
+    with (
+        patch.object(dashboard, "st", fake),
+        patch.object(fake, "plotly_chart", wraps=fake.plotly_chart) as plotly_chart,
+        patch.object(fake, "download_button", wraps=fake.download_button) as download_button,
+        patch.object(fake, "json", wraps=fake.json) as json,
+    ):
+        dashboard._show_forecast("1h", "GRU")
+
+    assert plotly_chart.call_count == 1
+    assert download_button.call_count == 1
+    assert json.call_count == 1
+    assert any("comparison.csv missing" in message for message in fake.warnings)
+
+
 def test_forecast_figure_reserves_space_between_title_and_legend():
     forecast = pd.DataFrame(
         {"p10": [90.0, 91.0], "p50": [100.0, 101.0], "p90": [110.0, 111.0]},
