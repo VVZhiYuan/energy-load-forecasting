@@ -578,11 +578,10 @@ $env:ENERGY_AI_MAX_RESPONSE_BYTES = "65536"
 python analyze_latest.py --report-dir reports/predictions/MT_252/1h
 ```
 
-For local deployment at home, the handoff target is Qwen3 served by Ollama or
-vLLM. Both expose OpenAI-compatible interfaces, so the project can keep the
-same client contract; only `ENERGY_AI_BASE_URL`, `ENERGY_AI_MODEL`, and
-`ENERGY_AI_API_KEY` change. Select the model size after checking the home
-desktop GPU memory. See the [Qwen quickstart](https://qwen.readthedocs.io/en/stable/getting_started/quickstart.html),
+For local deployment at home, use Qwen3 through Ollama or vLLM. Both expose
+OpenAI-compatible interfaces, so the project keeps the same client contract.
+Configure the endpoint, model name, and optional API key for the local model.
+Select the model size after checking the home desktop GPU memory. See the [Qwen quickstart](https://qwen.readthedocs.io/en/stable/getting_started/quickstart.html),
 [Ollama OpenAI compatibility guide](https://docs.ollama.com/api/openai-compatibility),
 and [vLLM OpenAI-compatible server guide](https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/).
 
