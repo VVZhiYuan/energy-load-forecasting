@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import asdict, dataclass
 from typing import Protocol, runtime_checkable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from src.ai_config import AISettings
+from src.agent_contract import AgentContractError, disabled_response, validate_agent_response
 
 
 PROVIDER_DISABLED = "disabled"
@@ -65,6 +68,48 @@ def _json_dumps(data: object) -> str:
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
 
+def _validate_transport_settings(settings: AISettings) -> None:
+    if (
+        not isinstance(settings.timeout_seconds, (int, float))
+        or isinstance(settings.timeout_seconds, bool)
+        or not math.isfinite(settings.timeout_seconds)
+        or settings.timeout_seconds <= 0
+    ):
+        raise ValueError("timeout_seconds must be a positive finite number.")
+    if (
+        not isinstance(settings.max_response_bytes, int)
+        or isinstance(settings.max_response_bytes, bool)
+        or settings.max_response_bytes <= 0
+    ):
+        raise ValueError("max_response_bytes must be a positive integer.")
+
+
+def _validate_base_url(settings: AISettings) -> None:
+    parsed = urlparse(settings.base_url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("openai-compatible base_url must use HTTP or HTTPS.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("openai-compatible base_url must not include credentials.")
+    if parsed.query:
+        raise ValueError("openai-compatible base_url must not include a query string.")
+    if parsed.fragment:
+        raise ValueError("openai-compatible base_url must not include a fragment.")
+
+    hostname = parsed.hostname
+    if hostname is None:
+        raise ValueError("openai-compatible base_url must include a host.")
+    hostname = hostname.lower()
+    is_loopback = hostname in {"localhost", "127.0.0.1", "::1"}
+    if parsed.scheme == "http" and not is_loopback:
+        raise ValueError("openai-compatible remote base_url must use HTTPS.")
+    if not is_loopback:
+        allowed_hosts = {host.strip().lower() for host in settings.allowed_hosts}
+        if hostname not in allowed_hosts:
+            raise ValueError(
+                "openai-compatible remote base_url host must be in the explicit allowlist."
+            )
+
+
 class DisabledAIProvider:
     """Provider that returns a deterministic disabled response."""
 
@@ -72,11 +117,7 @@ class DisabledAIProvider:
         self._settings = settings
 
     def analyze(self, context: AgentContext) -> AgentResponse:
-        content = {
-            "status": PROVIDER_DISABLED,
-            "message": "AI analysis is disabled.",
-            "selected_model": context.summary.get("selected_model"),
-        }
+        content = disabled_response(selected_model=context.summary.get("selected_model"))
         return AgentResponse(
             provider=PROVIDER_DISABLED,
             model="none",
@@ -93,20 +134,20 @@ class MockAIProvider:
 
     def analyze(self, context: AgentContext) -> AgentResponse:
         content = {
-            "status": PROVIDER_MOCK,
-            "selected_model": context.summary.get("selected_model"),
-            "horizon": context.summary.get("horizon"),
-            "forecast_steps": len(context.forecast_rows),
-            "comparison_models": [
-                row.get("model") for row in context.comparison_rows
-            ],
-            "recent_points": len(context.recent_load_rows),
-            "peak_timestamp": context.summary.get("peak_timestamp"),
-            "peak_prediction": context.summary.get("peak_prediction"),
-            "mean_interval_width": context.summary.get("mean_interval_width"),
+            "status": "ok",
+            "summary": "Mock analysis generated from the supplied forecast context.",
+            "risk_level": "low",
+            "evidence": [],
             "recommendations": [
-                "Review the peak window and keep load flexibility available."
+                {
+                    "action": "Review flexible load before the forecast peak.",
+                    "reason": "The mock provider does not change the forecast.",
+                    "priority": "medium",
+                    "requires_human_approval": True,
+                }
             ],
+            "forecast_unchanged": True,
+            "execution_enabled": False,
         }
         return AgentResponse(
             provider=PROVIDER_MOCK,
@@ -119,9 +160,8 @@ class MockAIProvider:
 class OpenAICompatibleAIProvider:
     """Provider that calls an OpenAI-compatible chat completions endpoint."""
 
-    def __init__(self, settings: AISettings, timeout_seconds: float = 30.0):
+    def __init__(self, settings: AISettings):
         self._settings = settings
-        self._timeout_seconds = timeout_seconds
 
     def analyze(self, context: AgentContext) -> AgentResponse:
         url = f"{self._settings.base_url.rstrip('/')}/chat/completions"
@@ -131,8 +171,12 @@ class OpenAICompatibleAIProvider:
                 {
                     "role": "system",
                     "content": (
-                        "You analyze electricity load forecasts. "
-                        "Return a single JSON object."
+                        "You are a read-only electricity load forecast analyst. "
+                        "Provide analysis only; do not change forecasts or execute actions. "
+                        "Do not call tools, functions, MCP, or shell commands. "
+                        "Return only a single JSON object matching the fixed JSON contract: "
+                        "status, summary, risk_level, evidence, recommendations, "
+                        "forecast_unchanged=true, and execution_enabled=false."
                     ),
                 },
                 {
@@ -151,8 +195,13 @@ class OpenAICompatibleAIProvider:
             request.add_header("Authorization", f"Bearer {self._settings.api_key}")
 
         try:
-            with urlopen(request, timeout=self._timeout_seconds) as response:
-                payload = json.loads(response.read().decode("utf-8"))
+            with urlopen(request, timeout=self._settings.timeout_seconds) as response:
+                response_body = response.read(self._settings.max_response_bytes + 1)
+            if len(response_body) > self._settings.max_response_bytes:
+                raise AIProviderError(
+                    "OpenAI-compatible provider response exceeded the size limit."
+                )
+            payload = json.loads(response_body.decode("utf-8"))
         except (HTTPError, URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise AIProviderError("OpenAI-compatible provider request failed.") from exc
 
@@ -167,9 +216,12 @@ class OpenAICompatibleAIProvider:
             raise AIProviderError("OpenAI-compatible message content must be text.")
 
         content = _parse_json_object(content_text)
-
-        if not isinstance(content, dict):
-            raise AIProviderError("OpenAI-compatible message content must be a JSON object.")
+        try:
+            content = validate_agent_response(content)
+        except AgentContractError as exc:
+            raise AIProviderError(
+                "OpenAI-compatible message content violates the agent response contract."
+            ) from exc
 
         return AgentResponse(
             provider=PROVIDER_OPENAI_COMPATIBLE,
@@ -223,6 +275,8 @@ def build_provider(settings: AISettings) -> AIProvider:
             raise ValueError("openai-compatible provider requires a base_url.")
         if not settings.model or not settings.model.strip():
             raise ValueError("openai-compatible provider requires a model.")
+        _validate_transport_settings(settings)
+        _validate_base_url(settings)
         return OpenAICompatibleAIProvider(settings)
     if provider_name == PROVIDER_MOCK:
         return MockAIProvider(settings)
