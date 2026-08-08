@@ -161,6 +161,8 @@ class OpenAICompatibleAIProvider:
     """Provider that calls an OpenAI-compatible chat completions endpoint."""
 
     def __init__(self, settings: AISettings):
+        _validate_transport_settings(settings)
+        _validate_base_url(settings)
         self._settings = settings
 
     def analyze(self, context: AgentContext) -> AgentResponse:
@@ -275,8 +277,6 @@ def build_provider(settings: AISettings) -> AIProvider:
             raise ValueError("openai-compatible provider requires a base_url.")
         if not settings.model or not settings.model.strip():
             raise ValueError("openai-compatible provider requires a model.")
-        _validate_transport_settings(settings)
-        _validate_base_url(settings)
         return OpenAICompatibleAIProvider(settings)
     if provider_name == PROVIDER_MOCK:
         return MockAIProvider(settings)

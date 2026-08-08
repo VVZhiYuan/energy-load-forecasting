@@ -182,23 +182,31 @@ def test_mock_provider_is_deterministic_offline_and_contract_valid(monkeypatch):
     assert first.content["status"] == "ok"
 
 
-def test_non_loopback_http_url_is_rejected_before_request():
+def test_non_loopback_http_url_is_rejected_before_request(monkeypatch):
     settings = AISettings(
         provider="openai-compatible",
         base_url="http://llm.example/v1",
         model="forecast-writer",
         allowed_hosts=("llm.example",),
     )
+    monkeypatch.setattr(
+        "src.ai_provider.urlopen",
+        lambda *args, **kwargs: pytest.fail("unsafe endpoint must not make a request"),
+    )
 
     with pytest.raises(ValueError, match="HTTPS"):
         build_provider(settings)
 
 
-def test_remote_host_requires_explicit_allowlist():
+def test_remote_host_requires_explicit_allowlist(monkeypatch):
     settings = AISettings(
         provider="openai-compatible",
         base_url="https://llm.example/v1",
         model="forecast-writer",
+    )
+    monkeypatch.setattr(
+        "src.ai_provider.urlopen",
+        lambda *args, **kwargs: pytest.fail("unsafe endpoint must not make a request"),
     )
 
     with pytest.raises(ValueError, match="allowlist"):
@@ -215,16 +223,53 @@ def test_remote_host_requires_explicit_allowlist():
         "https:///v1",
     ],
 )
-def test_openai_provider_rejects_unsafe_base_urls(base_url):
+def test_openai_provider_rejects_unsafe_base_urls(monkeypatch, base_url):
     settings = AISettings(
         provider="openai-compatible",
         base_url=base_url,
         model="forecast-writer",
         allowed_hosts=("llm.example",),
     )
+    monkeypatch.setattr(
+        "src.ai_provider.urlopen",
+        lambda *args, **kwargs: pytest.fail("unsafe endpoint must not make a request"),
+    )
 
     with pytest.raises(ValueError, match="base_url|HTTPS|credentials|query|fragment"):
         build_provider(settings)
+
+
+@pytest.mark.parametrize(
+    ("settings", "error"),
+    [
+        (
+            AISettings(
+                base_url="http://remote.example/v1",
+                model="forecast-writer",
+                allowed_hosts=("remote.example",),
+            ),
+            "HTTPS",
+        ),
+        (
+            AISettings(
+                base_url="https://remote.example/v1",
+                model="forecast-writer",
+            ),
+            "allowlist",
+        ),
+        (AISettings(timeout_seconds=0), "positive"),
+    ],
+)
+def test_direct_openai_provider_rejects_unsafe_settings_before_network(
+    monkeypatch, settings, error
+):
+    monkeypatch.setattr(
+        "src.ai_provider.urlopen",
+        lambda *args, **kwargs: pytest.fail("unsafe settings must not make a request"),
+    )
+
+    with pytest.raises(ValueError, match=error):
+        OpenAICompatibleAIProvider(settings)
 
 
 def test_loopback_http_is_allowed_for_local_model(monkeypatch):

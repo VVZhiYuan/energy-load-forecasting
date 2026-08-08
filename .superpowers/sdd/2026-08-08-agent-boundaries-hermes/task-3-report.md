@@ -54,3 +54,26 @@ Warnings were the existing pandas datetime parsing warning plus pytest cache per
 ## Commit
 
 The implementation and this report are committed together after final verification.
+
+## Fix Round 1
+
+### Findings Resolved
+
+- Moved endpoint and transport-limit validation into
+  `OpenAICompatibleAIProvider.__init__`. Direct instantiation now rejects an
+  unsafe endpoint, missing remote-host allowlist, or invalid timeout before
+  `analyze()` can construct or send a request. `build_provider` delegates to
+  this shared constructor validation.
+- Extended unsafe-endpoint tests to patch `urlopen` with a failure callback.
+  Added direct-provider parameterized coverage for remote HTTP, an unallowlisted
+  remote HTTPS host, and an invalid transport timeout. Each asserts `ValueError`
+  while proving no network call occurs.
+
+### Fix Verification
+
+```text
+.venv\Scripts\python.exe -m pytest -q tests\test_ai_provider.py tests\test_agent.py tests\test_agent_contract.py
+61 passed, 1 warning
+```
+
+The warning is the workspace's existing pytest-cache permission warning.
