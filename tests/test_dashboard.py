@@ -7,14 +7,18 @@ from src.dashboard_data import DashboardReportError
 
 
 class _Container:
+    def __init__(self, streamlit=None):
+        self._streamlit = streamlit
+
     def __enter__(self):
         return self
 
     def __exit__(self, *_args):
         return False
 
-    def metric(self, *_args, **_kwargs):
-        pass
+    def metric(self, label, value, **_kwargs):
+        if self._streamlit is not None:
+            self._streamlit.metrics.append((label, value))
 
 
 class _FakeStreamlit:
@@ -23,6 +27,10 @@ class _FakeStreamlit:
         self.column_config = type("ColumnConfig", (), {"NumberColumn": lambda *_args, **_kwargs: None})
         self.warnings = []
         self.infos = []
+        self.metrics = []
+        self.writes = []
+        self.plotly_charts = 0
+        self.downloads = 0
         self.tabs_seen = []
 
     def set_page_config(self, **_kwargs):
@@ -34,8 +42,8 @@ class _FakeStreamlit:
     def subheader(self, *_args, **_kwargs):
         pass
 
-    def write(self, *_args, **_kwargs):
-        pass
+    def write(self, value, *_args, **_kwargs):
+        self.writes.append(value)
 
     def caption(self, *_args, **_kwargs):
         pass
@@ -54,13 +62,13 @@ class _FakeStreamlit:
         return [_Container() for _ in labels]
 
     def columns(self, count):
-        return [_Container() for _ in range(count)]
+        return [_Container(self) for _ in range(count)]
 
     def plotly_chart(self, *_args, **_kwargs):
-        pass
+        self.plotly_charts += 1
 
     def download_button(self, *_args, **_kwargs):
-        pass
+        self.downloads += 1
 
     def expander(self, *_args, **_kwargs):
         return _Container()
@@ -96,8 +104,9 @@ def test_build_offline_agent_response_forces_mock_provider(monkeypatch):
 
     assert response.provider == "mock"
     assert response.model == "offline-mock"
-    assert response.content["peak_prediction"] == 120.0
-    assert response.content["mean_interval_width"] == 30.0
+    assert response.content["risk_level"] == "low"
+    assert response.content["forecast_unchanged"] is True
+    assert response.content["execution_enabled"] is False
 
 
 def test_show_agent_analysis_renders_offline_summary():
@@ -116,6 +125,10 @@ def test_show_agent_analysis_renders_offline_summary():
         )
 
     assert any("Offline mock" in message for message in fake.infos)
+    assert ("Risk level", "Low") in fake.metrics
+    assert ("Forecast", "Unchanged") in fake.metrics
+    assert ("Execution", "Disabled") in fake.metrics
+    assert "Mock analysis generated from the supplied forecast context." in fake.writes
     assert not fake.warnings
 
 
@@ -136,6 +149,32 @@ def test_show_agent_analysis_warns_without_breaking_forecast(monkeypatch):
         dashboard._show_agent_analysis(forecast, {}, comparison)
 
     assert fake.warnings == ["AI operations interpretation unavailable: invalid context"]
+
+
+def test_show_forecast_keeps_chart_and_download_when_agent_fails(monkeypatch):
+    fake = _FakeStreamlit()
+    forecast = pd.DataFrame(
+        {"step": [1], "prediction": [100.0], "p10": [90.0], "p50": [100.0], "p90": [110.0]},
+        index=pd.to_datetime(["2025-01-01 00:15:00"]),
+    )
+    comparison = pd.DataFrame(
+        [{"model": "LightGBM", "test_mae": 3.0, "test_rmse": 4.0, "selected": True}]
+    )
+
+    monkeypatch.setattr(dashboard, "load_forecast_report", lambda *_args: (forecast, {}))
+    monkeypatch.setattr(dashboard, "load_model_comparison", lambda *_args: comparison)
+    monkeypatch.setattr(
+        dashboard,
+        "_build_offline_agent_response",
+        lambda *_args: (_ for _ in ()).throw(ValueError("invalid response")),
+    )
+
+    with patch.object(dashboard, "st", fake):
+        dashboard._show_forecast("1h", "Classical")
+
+    assert fake.plotly_charts == 1
+    assert fake.downloads == 1
+    assert any("AI operations interpretation unavailable" in message for message in fake.warnings)
 
 
 def test_show_forecast_gru_survives_comparison_failure(monkeypatch):

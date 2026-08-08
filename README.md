@@ -518,8 +518,11 @@ and [24h metrics](reports/robustness/MT_252/24h/robustness_metrics.csv).
 The project uses a hybrid design: LightGBM and the baseline models produce the
 numeric load forecast, while an optional Agent interprets the saved forecast,
 compares model results, identifies peak and uncertainty signals, and prepares
-energy-management recommendations. The Agent never overwrites the numeric
-forecast.
+energy-management recommendations. The Agent is read-only: every accepted
+response has the fixed fields `status`, `summary`, `risk_level`, `evidence`,
+`recommendations`, `forecast_unchanged`, and `execution_enabled`. The forecast
+always remains unchanged, execution is always disabled, and each recommendation
+requires human approval.
 
 The repository has no mandatory external AI service. The default provider is
 `disabled`, and `mock` is available for an offline portfolio demo:
@@ -538,6 +541,29 @@ portfolio demonstrations. That dashboard path is deterministic and does not
 call a hosted API or local model, so it is safe to run before a home GPU model
 is available.
 
+### Agent Safety Boundary
+
+The Agent only receives bounded, allowlisted forecast context and returns
+validated read-only analysis. It has no tools, device controls, dispatch
+operations, or authority to modify a forecast. The dashboard continues to show
+forecast charts and downloads when Agent analysis is unavailable.
+
+Hosted OpenAI-compatible endpoints require HTTPS and an explicit host
+allowlist. Local HTTP is permitted only for loopback addresses such as
+`localhost` or `127.0.0.1`. Configure a positive timeout and response-size
+limit for every provider request:
+
+```powershell
+$env:ENERGY_AI_ALLOWED_HOSTS = "api.example.com"
+$env:ENERGY_AI_TIMEOUT_SECONDS = "30"
+$env:ENERGY_AI_MAX_RESPONSE_BYTES = "65536"
+```
+
+In a cloud deployment, `localhost` is the cloud container, never a home
+computer. Use a reachable, approved HTTPS endpoint instead. Hermes is not a
+runtime dependency: it is an optional future adapter that must remain isolated
+behind this same validated, read-only provider contract.
+
 For a future hosted API, use an OpenAI-compatible Chat Completions endpoint.
 Keep the key in the process environment rather than the repository:
 
@@ -546,6 +572,9 @@ $env:ENERGY_AI_PROVIDER = "openai-compatible"
 $env:ENERGY_AI_BASE_URL = "https://api.example.com/v1"
 $env:ENERGY_AI_MODEL = "your-model-name"
 $env:ENERGY_AI_API_KEY = "your-api-key"
+$env:ENERGY_AI_ALLOWED_HOSTS = "api.example.com"
+$env:ENERGY_AI_TIMEOUT_SECONDS = "30"
+$env:ENERGY_AI_MAX_RESPONSE_BYTES = "65536"
 python analyze_latest.py --report-dir reports/predictions/MT_252/1h
 ```
 

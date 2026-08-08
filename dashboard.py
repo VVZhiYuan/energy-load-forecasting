@@ -132,15 +132,25 @@ def _show_agent_analysis(
         content = response.content
         st.info("Offline mock analysis is active. No external API or local model was called.")
         columns = st.columns(3)
-        columns[0].metric("Provider", f"{response.provider} / {response.model}")
-        columns[1].metric("Forecast peak", f"{float(content['peak_prediction']):.1f} kW")
-        columns[2].metric("Mean uncertainty", f"{float(content['mean_interval_width']):.1f} kW")
-
-        peak_timestamp = pd.to_datetime(content["peak_timestamp"]).strftime("%Y-%m-%d %H:%M")
-        st.caption(f"Peak window: {peak_timestamp}")
-        st.write("Operational recommendations")
-        for recommendation in content.get("recommendations", []):
-            st.write(f"- {recommendation}")
+        columns[0].metric("Risk level", str(content["risk_level"]).title())
+        columns[1].metric(
+            "Forecast", "Unchanged" if content["forecast_unchanged"] else "Unavailable"
+        )
+        columns[2].metric(
+            "Execution", "Enabled" if content["execution_enabled"] else "Disabled"
+        )
+        st.write(str(content["summary"]))
+        if content["evidence"]:
+            st.write("Supporting evidence")
+            for item in content["evidence"]:
+                st.write(f"- {item}")
+        if content["recommendations"]:
+            st.write("Recommendations (review only)")
+            for recommendation in content["recommendations"]:
+                st.write(
+                    f"- {recommendation['action']} "
+                    f"({recommendation['priority']} priority): {recommendation['reason']}"
+                )
     except Exception as exc:
         st.warning(f"AI operations interpretation unavailable: {exc}")
 

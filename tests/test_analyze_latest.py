@@ -56,9 +56,20 @@ def test_mock_provider_writes_agent_analysis(tmp_path):
     )
     assert output["provider"] == "mock"
     assert output["model"] == "mock"
-    assert output["content"]["forecast_steps"] == 2
-    assert output["content"]["peak_prediction"] == 120.0
-    assert output["content"]["mean_interval_width"] == 15.0
+    assert set(output["content"]) == {
+        "status",
+        "summary",
+        "risk_level",
+        "evidence",
+        "recommendations",
+        "forecast_unchanged",
+        "execution_enabled",
+    }
+    assert output["content"]["status"] == "ok"
+    assert output["content"]["risk_level"] == "low"
+    assert output["content"]["forecast_unchanged"] is True
+    assert output["content"]["execution_enabled"] is False
+    assert output["content"]["recommendations"][0]["requires_human_approval"] is True
 
 
 def test_disabled_provider_is_written_without_network(tmp_path, monkeypatch):
@@ -80,6 +91,8 @@ def test_disabled_provider_is_written_without_network(tmp_path, monkeypatch):
         (report_dir / "agent_analysis.json").read_text(encoding="utf-8")
     )
     assert output["content"]["status"] == "disabled"
+    assert output["content"]["forecast_unchanged"] is True
+    assert output["content"]["execution_enabled"] is False
 
 
 def test_missing_report_file_returns_two(tmp_path, capsys):

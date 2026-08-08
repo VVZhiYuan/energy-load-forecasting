@@ -32,10 +32,12 @@
 - Modify: `src/ai_config.py` — parse timeout, response-size, and explicit host allowlist settings.
 - Modify: `src/ai_provider.py` — validate endpoints, bound HTTP responses, add boundary instructions, and validate every provider response.
 - Modify: `dashboard.py` — render the validated response fields without assuming unvalidated model output.
+- Modify: `analyze_latest.py` — expose the strict Agent response contract to the saved-report CLI consumer.
 - Modify: `docs/DEPLOYMENT.md` — document the new environment variables and the read-only/approval boundary.
 - Modify: `README.md` — add a concise architecture and safety note for portfolio reviewers.
 - Modify: `tests/test_agent.py` — test context field filtering and 96-row bounds.
 - Modify: `tests/test_ai_provider.py` — test response validation, endpoint policy, response-size limits, and no-tool requests.
+- Modify: `tests/test_analyze_latest.py` — migrate CLI assertions from legacy mock fields to the read-only contract.
 - Create: `tests/test_agent_contract.py` — focused tests for the response contract and safe provider payloads.
 
 ## Task 1: Add the Agent Contract Module
@@ -414,4 +416,3 @@ Run: `git status --short --branch` and inspect the latest GitHub Actions run.
 
 Expected: branch is synchronized with `origin/main`, CI is green, and no
 secrets or Hermes runtime dependency are present.
-

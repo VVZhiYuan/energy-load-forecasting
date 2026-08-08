@@ -43,6 +43,13 @@ Do not set `ENERGY_AI_PROVIDER=openai-compatible` in the cloud deployment until
 you also have an approved reachable endpoint and a safe secret-management
 setup. For the current portfolio demo, no secrets are required.
 
+The Agent boundary is read-only. It can summarize evidence and make
+human-approved recommendations, but it cannot modify a forecast, dispatch
+equipment, or execute tools. The dashboard presents its `risk_level`,
+`forecast_unchanged`, and `execution_enabled` metadata without operation
+buttons. If Agent analysis fails, forecast charts and CSV downloads remain
+available.
+
 ## Future Local Or Company API Handoff
 
 When a local Ollama/vLLM model or company-approved OpenAI-compatible API is
@@ -54,10 +61,23 @@ ENERGY_AI_PROVIDER = "openai-compatible"
 ENERGY_AI_BASE_URL = "http://localhost:11434/v1"
 ENERGY_AI_MODEL = "your-local-or-approved-model"
 ENERGY_AI_API_KEY = "your-api-key-if-required"
+ENERGY_AI_ALLOWED_HOSTS = "api.example.com"
+ENERGY_AI_TIMEOUT_SECONDS = "30"
+ENERGY_AI_MAX_RESPONSE_BYTES = "65536"
 ```
 
+`ENERGY_AI_ALLOWED_HOSTS` is a comma-separated allowlist for remote provider
+hostnames. Remote providers must use HTTPS and be listed explicitly. HTTP is
+allowed only for loopback local runtimes (`localhost`, `127.0.0.1`, or `::1`).
+`ENERGY_AI_TIMEOUT_SECONDS` must be a positive finite value, and
+`ENERGY_AI_MAX_RESPONSE_BYTES` must be a positive byte limit; their defaults
+are 30 seconds and 65536 bytes.
+
 For a cloud deployment, `localhost` means the cloud container itself, not your
-home computer. Use a reachable HTTPS endpoint for hosted deployments.
+home computer. Do not point a cloud deployment at a home-computer `localhost`;
+use a reachable, approved HTTPS endpoint instead. Hermes is not required by
+the dashboard or deployed runtime. It remains an optional future adapter that
+must be isolated behind the existing validated, read-only provider contract.
 
 ## Troubleshooting
 
