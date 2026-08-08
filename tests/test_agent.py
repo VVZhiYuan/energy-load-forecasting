@@ -3,6 +3,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.ai_config import AISettings
 from src.ai_provider import AgentContext, AgentResponse
@@ -10,24 +11,32 @@ from src.agent import analyze_forecast, build_agent_context
 from src.inference import ForecastRun
 
 
-def make_run():
-    observed_index = pd.date_range("2026-08-05 00:00:00", periods=5, freq="15min")
-    observed = pd.Series([10.0, 12.5, 13.0, 11.5, 15.0], index=observed_index, name="load")
+def make_run(forecast_steps=3, observed_steps=5):
+    observed_index = pd.date_range(
+        "2026-08-05 00:00:00", periods=observed_steps, freq="15min"
+    )
+    observed_values = np.arange(observed_steps, dtype=float) + 10.0
+    observed_values[:5] = [10.0, 12.5, 13.0, 11.5, 15.0]
+    observed = pd.Series(
+        observed_values,
+        index=observed_index,
+        name="load",
+    )
     forecast_index = pd.date_range(
         observed_index[-1] + pd.Timedelta(minutes=15),
-        periods=3,
+        periods=forecast_steps,
         freq="15min",
         name="forecast_timestamp",
     )
     forecast = pd.DataFrame(
         {
-            "step": [1, 2, 3],
-            "prediction": [16.0, 17.25, 18.5],
-            "p10": [15.0, 16.0, 17.0],
-            "p50": [16.0, 17.25, 18.5],
-            "p90": [17.0, 18.5, 20.0],
-            "point_model": ["Ridge", "Ridge", "Ridge"],
-            "interval_method": ["residual_calibration"] * 3,
+            "step": np.arange(1, forecast_steps + 1),
+            "prediction": np.arange(forecast_steps, dtype=float) * 1.25 + 16.0,
+            "p10": np.arange(forecast_steps, dtype=float) + 15.0,
+            "p50": np.arange(forecast_steps, dtype=float) + 16.0,
+            "p90": np.arange(forecast_steps, dtype=float) * 1.5 + 17.0,
+            "point_model": ["Ridge"] * forecast_steps,
+            "interval_method": ["residual_calibration"] * forecast_steps,
         },
         index=forecast_index,
     )
@@ -58,7 +67,7 @@ def make_run():
     summary = {
         "source_label": "fixture",
         "horizon": "1h",
-        "horizon_steps": 3,
+        "horizon_steps": forecast_steps,
         "selected_model": "Ridge",
         "selected_configuration": "alpha=0.1",
         "forecast_origin": observed_index[-1].isoformat(),
@@ -149,7 +158,26 @@ def test_build_agent_context_serializes_pandas_null_like_values():
 
     payload = asdict(context)
     assert json.dumps(payload)
-    assert payload["summary"]["holiday_country"] is None
-    assert payload["summary"]["uncertainty_note"] is None
     assert payload["forecast_rows"][0]["point_model"] is None
     assert payload["forecast_rows"][0]["interval_method"] is None
+
+
+def test_build_agent_context_filters_fields_and_caps_recent_rows():
+    run = make_run(observed_steps=100)
+    run.forecast["secret"] = "do not send"
+    original_forecast = run.forecast.copy(deep=True)
+
+    context = build_agent_context(run, recent_points=200)
+
+    assert len(context.forecast_rows) <= 96
+    assert len(context.recent_load_rows) == 96
+    assert context.recent_load_rows[0]["timestamp"] == run.observed.index[-96].isoformat()
+    assert all("secret" not in row for row in context.forecast_rows)
+    pd.testing.assert_frame_equal(run.forecast, original_forecast)
+
+
+def test_build_agent_context_rejects_forecast_over_limit():
+    run = make_run(forecast_steps=97)
+
+    with pytest.raises(ValueError, match="96"):
+        build_agent_context(run)

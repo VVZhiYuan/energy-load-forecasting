@@ -9,7 +9,40 @@ import pandas as pd
 
 from src.ai_config import AISettings
 from src.ai_provider import AgentContext, AgentResponse, build_provider
+from src.agent_contract import MAX_CONTEXT_ROWS
 from src.inference import ForecastRun
+
+
+SUMMARY_KEYS = (
+    "meter",
+    "horizon",
+    "selected_model",
+    "selected_configuration",
+    "forecast_origin",
+    "observed_start",
+    "observed_end",
+)
+FORECAST_ROW_KEYS = (
+    "forecast_timestamp",
+    "step",
+    "prediction",
+    "p10",
+    "p50",
+    "p90",
+    "point_model",
+    "interval_method",
+)
+COMPARISON_ROW_KEYS = (
+    "model",
+    "configuration",
+    "validation_mae",
+    "validation_rmse",
+    "test_mae",
+    "test_rmse",
+    "selected",
+    "training_seconds",
+)
+RECENT_LOAD_ROW_KEYS = ("timestamp", "load")
 
 
 def _json_safe(value: object) -> object:
@@ -37,17 +70,22 @@ def _json_safe(value: object) -> object:
     return value
 
 
-def _to_records(frame: pd.DataFrame) -> list[dict[str, object]]:
+def _to_records(
+    frame: pd.DataFrame, allowed_keys: tuple[str, ...]
+) -> list[dict[str, object]]:
     rows = frame.copy().reset_index()
     if rows.columns[0] != "forecast_timestamp":
         rows = rows.rename(columns={rows.columns[0]: "forecast_timestamp"})
-    return [_json_safe(record) for record in rows.to_dict(orient="records")]
+    return [
+        {key: _json_safe(record[key]) for key in allowed_keys if key in record}
+        for record in rows.to_dict(orient="records")
+    ]
 
 
 def _recent_load_rows(run: ForecastRun, recent_points: int) -> list[dict[str, object]]:
     if recent_points == 0:
         return []
-    recent = run.observed.iloc[-recent_points:].copy()
+    recent = run.observed.iloc[-min(recent_points, MAX_CONTEXT_ROWS) :].copy()
     return [
         {
             "timestamp": timestamp.isoformat(),
@@ -78,6 +116,8 @@ def build_agent_context_from_frames(
         raise ValueError("forecast must contain at least one row")
     if not isinstance(forecast.index, pd.DatetimeIndex):
         raise ValueError("forecast must use a DatetimeIndex")
+    if len(forecast) > MAX_CONTEXT_ROWS:
+        raise ValueError(f"forecast must contain at most {MAX_CONTEXT_ROWS} rows")
 
     peak_position = int(forecast["prediction"].astype(float).to_numpy().argmax())
     peak_row = forecast.iloc[peak_position]
@@ -85,8 +125,18 @@ def build_agent_context_from_frames(
     p90 = forecast["p90"].astype(float).to_numpy()
     interval_width = p90 - p10
 
-    safe_recent = _json_safe(recent_load_rows or [])
-    summary = _json_safe(dict(summary_data))
+    safe_recent = [
+        {
+            key: _json_safe(row.get(key))
+            for key in RECENT_LOAD_ROW_KEYS
+        }
+        for row in (recent_load_rows or [])[-MAX_CONTEXT_ROWS:]
+    ]
+    summary = {
+        key: _json_safe(summary_data[key])
+        for key in SUMMARY_KEYS
+        if key in summary_data
+    }
     summary.update(
         {
             "selected_model": summary.get("selected_model"),
@@ -109,8 +159,8 @@ def build_agent_context_from_frames(
 
     return AgentContext(
         summary=summary,
-        forecast_rows=_to_records(forecast),
-        comparison_rows=[_json_safe(row) for row in comparison.to_dict(orient="records")],
+        forecast_rows=_to_records(forecast, FORECAST_ROW_KEYS),
+        comparison_rows=_to_records(comparison, COMPARISON_ROW_KEYS),
         recent_load_rows=safe_recent,
     )
 
