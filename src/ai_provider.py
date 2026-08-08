@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import Protocol, runtime_checkable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from src.ai_config import AISettings
 from src.agent_contract import AgentContractError, disabled_response, validate_agent_response
@@ -26,6 +26,21 @@ SUPPORTED_PROVIDERS = {
 
 class AIProviderError(RuntimeError):
     """Raised when an AI provider cannot complete an analysis request."""
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Fail closed when an endpoint attempts to redirect the provider request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise HTTPError(req, code, "Provider redirects are disabled.", headers, fp)
+
+
+_NO_REDIRECT_OPENER = build_opener(_NoRedirectHandler())
+
+
+def urlopen(request, timeout=None):
+    """Open a provider request without following redirects."""
+    return _NO_REDIRECT_OPENER.open(request, timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -208,8 +223,29 @@ class OpenAICompatibleAIProvider:
             raise AIProviderError("OpenAI-compatible provider request failed.") from exc
 
         try:
-            content_text = payload["choices"][0]["message"]["content"]
+            choice = payload["choices"][0]
+            message = choice["message"]
         except (KeyError, IndexError, TypeError) as exc:
+            raise AIProviderError(
+                "OpenAI-compatible response did not include message content."
+            ) from exc
+
+        if not isinstance(choice, dict) or not isinstance(message, dict):
+            raise AIProviderError(
+                "OpenAI-compatible response did not include message content."
+            )
+        if message.get("tool_calls") or message.get("function_call"):
+            raise AIProviderError(
+                "OpenAI-compatible response included a tool or function call."
+            )
+        if choice.get("finish_reason") == "tool_calls":
+            raise AIProviderError(
+                "OpenAI-compatible response included a tool or function call."
+            )
+
+        try:
+            content_text = message["content"]
+        except KeyError as exc:
             raise AIProviderError(
                 "OpenAI-compatible response did not include message content."
             ) from exc

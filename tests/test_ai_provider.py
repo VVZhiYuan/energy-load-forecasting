@@ -1,4 +1,6 @@
 import json
+from urllib.error import HTTPError
+from urllib.request import Request
 
 import pytest
 
@@ -10,6 +12,8 @@ from src.ai_provider import (
     AgentResponse,
     DisabledAIProvider,
     MockAIProvider,
+    _NO_REDIRECT_OPENER,
+    _NoRedirectHandler,
     OpenAICompatibleAIProvider,
     build_provider,
 )
@@ -286,6 +290,32 @@ def test_loopback_http_is_allowed_for_local_model(monkeypatch):
     assert provider.analyze(make_context()).content["execution_enabled"] is False
 
 
+@pytest.mark.parametrize(
+    "redirect_target",
+    [
+        "https://unallowed.example/v1/chat/completions",
+        "http://allowed.example/v1/chat/completions",
+        "http://127.0.0.1:11434/v1/chat/completions",
+    ],
+)
+def test_provider_redirects_fail_closed_for_unsafe_targets(redirect_target):
+    request = Request("https://allowed.example/v1/chat/completions")
+
+    assert any(
+        isinstance(handler, _NoRedirectHandler)
+        for handler in _NO_REDIRECT_OPENER.handlers
+    )
+    with pytest.raises(HTTPError):
+        _NoRedirectHandler().redirect_request(
+            request,
+            None,
+            302,
+            "Found",
+            {},
+            redirect_target,
+        )
+
+
 def test_openai_provider_posts_only_model_and_messages_and_parses_contract(monkeypatch):
     settings = AISettings(
         provider="openai-compatible",
@@ -403,6 +433,44 @@ def test_openai_provider_rejects_incomplete_agent_contract(monkeypatch):
     )
 
     with pytest.raises(AIProviderError, match="contract"):
+        provider.analyze(make_context())
+
+
+@pytest.mark.parametrize(
+    "choice_update",
+    [
+        {"message": {"tool_calls": [{"id": "call_1"}]}},
+        {"message": {"function_call": {"name": "dispatch"}}},
+        {"finish_reason": "tool_calls"},
+    ],
+)
+def test_openai_provider_rejects_response_envelope_tool_calls(
+    monkeypatch, choice_update
+):
+    settings = AISettings(
+        provider="openai-compatible",
+        base_url="https://llm.example/v1",
+        model="forecast-writer",
+        allowed_hosts=("llm.example",),
+    )
+    provider = build_provider(settings)
+    choice = {
+        "message": {"content": json.dumps(valid_content())},
+        "finish_reason": "stop",
+    }
+    for key, value in choice_update.items():
+        if isinstance(value, dict):
+            choice[key].update(value)
+        else:
+            choice[key] = value
+    monkeypatch.setattr(
+        "src.ai_provider.urlopen",
+        lambda *args, **kwargs: FakeResponse(
+            json.dumps({"choices": [choice]}).encode("utf-8")
+        ),
+    )
+
+    with pytest.raises(AIProviderError, match="tool or function call"):
         provider.analyze(make_context())
 
 

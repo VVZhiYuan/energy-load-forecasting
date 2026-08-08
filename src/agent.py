@@ -160,7 +160,9 @@ def build_agent_context_from_frames(
     return AgentContext(
         summary=summary,
         forecast_rows=_to_records(forecast, FORECAST_ROW_KEYS),
-        comparison_rows=_to_records(comparison, COMPARISON_ROW_KEYS),
+        comparison_rows=_to_records(
+            comparison.iloc[:MAX_CONTEXT_ROWS], COMPARISON_ROW_KEYS
+        ),
         recent_load_rows=safe_recent,
     )
 

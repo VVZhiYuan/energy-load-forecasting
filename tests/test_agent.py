@@ -7,7 +7,11 @@ import pytest
 
 from src.ai_config import AISettings
 from src.ai_provider import AgentContext, AgentResponse
-from src.agent import analyze_forecast, build_agent_context
+from src.agent import (
+    analyze_forecast,
+    build_agent_context,
+    build_agent_context_from_frames,
+)
 from src.inference import ForecastRun
 
 
@@ -174,6 +178,23 @@ def test_build_agent_context_filters_fields_and_caps_recent_rows():
     assert context.recent_load_rows[0]["timestamp"] == run.observed.index[-96].isoformat()
     assert all("secret" not in row for row in context.forecast_rows)
     pd.testing.assert_frame_equal(run.forecast, original_forecast)
+
+
+def test_build_agent_context_caps_comparison_rows_without_mutating_source():
+    run = make_run()
+    comparison = pd.concat([run.model_comparison] * 60, ignore_index=True)
+    original_comparison = comparison.copy(deep=True)
+
+    context = build_agent_context_from_frames(
+        run.summary,
+        run.forecast,
+        comparison,
+    )
+
+    assert len(context.comparison_rows) == 96
+    assert context.comparison_rows[0]["model"] == "Ridge"
+    assert context.comparison_rows[-1]["model"] == "LightGBM"
+    pd.testing.assert_frame_equal(comparison, original_comparison)
 
 
 def test_build_agent_context_rejects_forecast_over_limit():
