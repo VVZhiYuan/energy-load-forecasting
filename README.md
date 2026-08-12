@@ -10,6 +10,9 @@ The project is designed for smart energy, green technology, and AI-driven energy
 > for the architecture, experiment results, AI connection, resume bullets, and
 > a two-minute interview explanation.
 >
+> **Home PC handoff:** [read the LM Studio and Qwen3.5 continuation guide](HOME_PC_CODEX_HANDOFF.md)
+> before running a local model or extending the project.
+>
 > **Live demo:** [energy-load-forecasting.streamlit.app](https://energy-load-forecasting.streamlit.app/)
 
 ## Current Project Status
