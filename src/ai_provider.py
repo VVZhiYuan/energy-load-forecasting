@@ -187,20 +187,15 @@ class OpenAICompatibleAIProvider:
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "You are a read-only electricity load forecast analyst. "
-                        "Provide analysis only; do not change forecasts or execute actions. "
-                        "Do not call tools, functions, MCP, or shell commands. "
-                        "Return only a single JSON object matching the fixed JSON contract: "
-                        "status, summary, risk_level, evidence, recommendations, "
-                        "forecast_unchanged=true, and execution_enabled=false."
-                    ),
+                    "content": _agent_system_prompt(),
                 },
                 {
                     "role": "user",
-                    "content": _json_dumps(_context_payload(context)),
+                    "content": _json_dumps(_compact_context_payload(context)),
                 },
             ],
+            "temperature": 0,
+            "max_tokens": 8192,
         }
         request = Request(
             url,
@@ -267,6 +262,94 @@ class OpenAICompatibleAIProvider:
             content=content,
             raw_content=content_text,
         )
+
+
+def _agent_system_prompt() -> str:
+    return (
+        "You are a read-only electricity load forecast analyst. "
+        "Use only the supplied JSON context. Do not invent values. "
+        "Distinguish validation-based model selection from held-out test metrics; "
+        "do not claim the selected model is best on test metrics unless the "
+        "comparison rows show it is best for each cited metric. "
+        "Do not change forecasts, train models, execute actions, call tools, "
+        "call functions, use MCP, browse, or run shell commands. "
+        "Return exactly one valid JSON object and no prose. "
+        "Follow the fixed JSON contract exactly. "
+        "The object must have exactly these top-level keys: "
+        "status, summary, risk_level, evidence, recommendations, "
+        "forecast_unchanged, execution_enabled. "
+        'status must be "ok". risk_level must be "low", "medium", or "high". '
+        "summary must be one concise string, not an object or array. "
+        "evidence must be an array of at most five strings grounded in the context. "
+        "recommendations must be an array of at most five objects. "
+        "Each recommendation object must have exactly action, reason, priority, "
+        "requires_human_approval. priority must be low, medium, or high. "
+        "Every requires_human_approval must be true. "
+        "forecast_unchanged must be true. execution_enabled must be false. "
+        "Never claim an action was executed. "
+        "Example shape: "
+        '{"status":"ok","summary":"One sentence grounded in the context.",'
+        '"risk_level":"low","evidence":["Context fact."],'
+        '"recommendations":[{"action":"Review forecast peak.",'
+        '"reason":"The context identifies a peak window.",'
+        '"priority":"medium","requires_human_approval":true}],'
+        '"forecast_unchanged":true,"execution_enabled":false}'
+    )
+
+
+def _compact_context_payload(context: AgentContext) -> dict[str, object]:
+    payload = _context_payload(context)
+    forecast_rows = list(context.forecast_rows)
+    payload["forecast_rows"] = _key_forecast_rows(forecast_rows, context.summary)
+    payload["forecast_row_count"] = len(forecast_rows)
+    return payload
+
+
+def _key_forecast_rows(
+    rows: list[dict[str, object]], summary: dict[str, object]
+) -> list[dict[str, object]]:
+    if len(rows) <= 24:
+        return rows
+
+    selected_indexes = {0, len(rows) - 1}
+    peak_step = summary.get("peak_step")
+    peak_index = _step_index(rows, peak_step)
+    if peak_index is not None:
+        selected_indexes.update(
+            index
+            for index in range(max(0, peak_index - 2), min(len(rows), peak_index + 3))
+        )
+
+    widths = []
+    for index, row in enumerate(rows):
+        try:
+            width = float(row["p90"]) - float(row["p10"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        widths.append((width, index))
+    for _, index in sorted(widths, reverse=True)[:5]:
+        selected_indexes.add(index)
+
+    stride = max(1, len(rows) // 8)
+    selected_indexes.update(range(0, len(rows), stride))
+    return [rows[index] for index in sorted(selected_indexes)[:24]]
+
+
+def _step_index(rows: list[dict[str, object]], peak_step: object) -> int | None:
+    for index, row in enumerate(rows):
+        if row.get("step") == peak_step:
+            return index
+    try:
+        peak_step_float = float(peak_step)
+    except (TypeError, ValueError):
+        return None
+    for index, row in enumerate(rows):
+        try:
+            if float(row.get("step")) == peak_step_float:
+                return index
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _parse_json_object(content_text: str) -> dict[str, object]:

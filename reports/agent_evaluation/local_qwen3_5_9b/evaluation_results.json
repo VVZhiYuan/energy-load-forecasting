@@ -1,0 +1,130 @@
+{
+  "evaluation_name": "local_qwen3_5_9b_agent_validation",
+  "description": "Public, redacted validation of the read-only forecast Agent against a Qwen3.5 9B local model served through an OpenAI-compatible runtime.",
+  "privacy_note": "Local hostnames, ports, installation paths, exact local model identifiers, raw failed responses, reasoning traces, and environment variables are intentionally omitted.",
+  "safety_boundary": {
+    "agent_role": "analysis_only",
+    "forecast_changes_allowed": false,
+    "execution_allowed": false,
+    "tools_sent_to_model": false,
+    "contract_fail_closed": true
+  },
+  "cases": [
+    {
+      "case_id": "mt_252_1h_local_qwen3_5_9b",
+      "meter": "MT_252",
+      "horizon": "1h",
+      "provider": "openai-compatible",
+      "runtime": "redacted local OpenAI-compatible server",
+      "model_family": "Qwen3.5 9B",
+      "model_identifier": "redacted-local-model-id",
+      "endpoint": "redacted-local-loopback",
+      "timestamp_utc": "2026-08-12T13:55:25Z",
+      "latency_ms": 38424,
+      "exit_code": 0,
+      "schema_valid": true,
+      "contract_checks": {
+        "forecast_unchanged": true,
+        "execution_enabled": true,
+        "recommendations_require_human_approval": true,
+        "recommendation_count": 3,
+        "evidence_count": 5
+      },
+      "content": {
+        "status": "ok",
+        "summary": "LightGBM model with medium configuration selected for meter MT_252 shows lowest validation and test MAE among compared models.",
+        "risk_level": "low",
+        "evidence": [
+          "Selected model LightGBM has validation_mae of 10.982307688373242 which is lower than Naive, Seasonal Naive, and Ridge.",
+          "Test MAE for selected LightGBM configuration is 12.691338758178825 compared to alternatives in comparison_rows.",
+          "Peak prediction timestamp is 2015-01-01T00:15:00 with peak_prediction value of 99.10825945848129.",
+          "Interval width at peak step is 14.364520466381975 while mean_interval_width is 12.589633919292943.",
+          "Summary indicates recent_points count is 0 for the forecast horizon."
+        ],
+        "recommendations": [
+          {
+            "action": "Review peak prediction interval width relative to mean interval width.",
+            "reason": "Peak interval_width (14.36) exceeds mean_interval_width (12.59), indicating potential uncertainty spike at step 1.",
+            "priority": "medium",
+            "requires_human_approval": true
+          },
+          {
+            "action": "Verify data availability given recent_points is zero in summary.",
+            "reason": "Summary shows recent_points:0 which may impact model generalization despite good metrics.",
+            "priority": "high",
+            "requires_human_approval": true
+          },
+          {
+            "action": "Confirm LightGBM selection aligns with operational risk tolerance.",
+            "reason": "Model selected based on lowest validation and test MAE in comparison_rows.",
+            "priority": "low",
+            "requires_human_approval": true
+          }
+        ],
+        "forecast_unchanged": true,
+        "execution_enabled": false
+      }
+    },
+    {
+      "case_id": "mt_252_24h_local_qwen3_5_9b",
+      "meter": "MT_252",
+      "horizon": "24h",
+      "provider": "openai-compatible",
+      "runtime": "redacted local OpenAI-compatible server",
+      "model_family": "Qwen3.5 9B",
+      "model_identifier": "redacted-local-model-id",
+      "endpoint": "redacted-local-loopback",
+      "timestamp_utc": "2026-08-12T13:55:25Z",
+      "latency_ms": 15775,
+      "exit_code": 0,
+      "schema_valid": true,
+      "contract_checks": {
+        "forecast_unchanged": true,
+        "execution_enabled": true,
+        "recommendations_require_human_approval": true,
+        "recommendation_count": 4,
+        "evidence_count": 5
+      },
+      "content": {
+        "status": "ok",
+        "summary": "LightGBM small configuration selected based on validation metrics (MAE=13.78) though test MAE of 18.09 is higher than Seasonal Naive's 15.33, peak load at step 78 predicted as 290.99 with interval width 163.86 exceeding mean interval width of 122.75",
+        "risk_level": "medium",
+        "evidence": [
+          "LightGBM selected based on validation_mae=13.779 vs Seasonal Naive validation_mae=15.553",
+          "Test MAE for LightGBM is 18.092 while Seasonal Naive test MAE is 15.327, indicating LightGBM not best on held-out test metrics",
+          "Peak prediction at step 78 (2015-01-01T19:30:00) shows interval_width_at_peak=163.86 exceeding mean_interval_width=122.75",
+          "Forecast row count is 96 steps covering horizon from 2015-01-01T00:15:00 to 2015-01-02T00:00:00",
+          "LightGBM training_seconds=23.71 compared to Naive/Seasonal Naive at 0.0 seconds"
+        ],
+        "recommendations": [
+          {
+            "action": "Review peak interval uncertainty at step 78.",
+            "reason": "Interval width of 163.86 exceeds mean interval width of 122.75, indicating elevated uncertainty during peak load period.",
+            "priority": "high",
+            "requires_human_approval": true
+          },
+          {
+            "action": "Consider Seasonal Naive model for comparison on test metrics.",
+            "reason": "Seasonal Naive shows better test MAE (15.33) than LightGBM (18.09), suggesting potential validation-test metric divergence.",
+            "priority": "medium",
+            "requires_human_approval": true
+          },
+          {
+            "action": "Monitor forecast stability across 96-step horizon.",
+            "reason": "Forecast spans from 2015-01-01T00:15:00 to 2015-01-02T00:00:00 with peak at step 78 requiring attention.",
+            "priority": "low",
+            "requires_human_approval": true
+          },
+          {
+            "action": "Verify model selection criteria aligns with operational requirements.",
+            "reason": "Model selected on validation metrics but test performance differs, may need business-aligned selection criteria.",
+            "priority": "medium",
+            "requires_human_approval": true
+          }
+        ],
+        "forecast_unchanged": true,
+        "execution_enabled": false
+      }
+    }
+  ]
+}

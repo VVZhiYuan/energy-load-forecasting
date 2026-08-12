@@ -111,6 +111,20 @@ example, LightGBM wins validation for both horizons; however, the untouched
 reported rather than hidden, because honest baseline comparison is part of the
 project's research value.
 
+### Local Model Agent Validation
+
+The OpenAI-compatible Agent adapter has also been validated against a local
+Qwen3.5 9B runtime. Public, redacted results are stored under
+[`reports/agent_evaluation/local_qwen3_5_9b/`](reports/agent_evaluation/local_qwen3_5_9b/).
+The committed report records schema-valid 1h and 24h Agent outputs while
+omitting local hostnames, ports, installation paths, environment variables,
+raw failed responses, and reasoning traces.
+
+The cloud dashboard still uses the offline mock Agent and does not include
+local endpoint details or secrets. The real-model Agent remains read-only:
+it can explain saved forecast evidence, but it cannot alter forecasts, train
+models, dispatch storage, call tools, or execute actions.
+
 ## Project Goals
 
 - Forecast future electricity load for a selected client or meter.

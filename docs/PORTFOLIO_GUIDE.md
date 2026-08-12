@@ -62,12 +62,15 @@ The current AI components are:
   model comparison, and robustness results from saved JSON/CSV artifacts.
 - A Forecast-tab offline mock Agent interpretation for a no-API portfolio
   demonstration.
+- A redacted local-model Agent validation against Qwen3.5 9B through an
+  OpenAI-compatible runtime, with schema-valid 1h and 24h outputs under
+  `reports/agent_evaluation/local_qwen3_5_9b/`.
 
-The next AI extension is to connect the Agent to a fixed company-approved API
-or a local model. The dashboard currently uses an offline mock interpretation
-and does not call an external API. A future OpenAI-compatible endpoint can be
-enabled with `ENERGY_AI_PROVIDER`, `ENERGY_AI_BASE_URL`, and `ENERGY_AI_MODEL`
-after the endpoint is available.
+The public dashboard currently uses an offline mock interpretation and does
+not call an external API. A fixed company-approved API or local
+OpenAI-compatible endpoint can be enabled with `ENERGY_AI_PROVIDER`,
+`ENERGY_AI_BASE_URL`, and `ENERGY_AI_MODEL` in a private runtime, but endpoint
+details and secrets are not committed.
 
 ## Demo Path
 
@@ -113,6 +116,9 @@ real-time grid control.
 - Connected probabilistic forecasts to a HiGHS MILP battery-dispatch workflow
   with no-storage and rule-based baselines, exposing cost, peak-import, SOC,
   and dispatch trade-offs under synthetic demonstration assumptions.
+- Added a read-only Agent validation layer using a local OpenAI-compatible
+  Qwen3.5 9B runtime, preserving strict schema validation and prohibiting
+  forecast edits, tool calls, or autonomous execution.
 
 ## Two-Minute Interview Explanation
 
@@ -131,5 +137,6 @@ models.”
 
 - Rolling-origin evaluation across multiple forecast origins.
 - Site-specific tariff, battery limits, and real operational constraints.
-- API/local-model Agent provider with structured output validation.
+- Broader local-model Agent evaluation set with adversarial invalid-response
+  fixtures.
 - Monitoring for forecast drift and interval coverage after deployment.

@@ -14,6 +14,7 @@ from src.ai_provider import (
     MockAIProvider,
     _NO_REDIRECT_OPENER,
     _NoRedirectHandler,
+    _compact_context_payload,
     OpenAICompatibleAIProvider,
     build_provider,
 )
@@ -343,8 +344,16 @@ def test_openai_provider_posts_only_model_and_messages_and_parses_contract(monke
     assert captured["url"] == "https://llm.example/v1/chat/completions"
     assert captured["method"] == "POST"
     assert captured["timeout"] == 12.5
-    assert set(captured["body"]) == {"model", "messages"}
+    assert set(captured["body"]) == {
+        "model",
+        "messages",
+        "temperature",
+        "max_tokens",
+    }
     assert captured["body"]["model"] == "forecast-writer"
+    assert captured["body"]["temperature"] == 0
+    assert captured["body"]["max_tokens"] == 8192
+    assert "response_format" not in captured["body"]
     assert "tools" not in captured["body"]
     assert "tool_choice" not in captured["body"]
     assert captured["body"]["messages"][1]["role"] == "user"
@@ -356,6 +365,35 @@ def test_openai_provider_posts_only_model_and_messages_and_parses_contract(monke
     assert response.model == "forecast-writer"
     assert response.content == valid_content()
     assert response.raw_content is not None
+
+
+def test_provider_compacts_long_forecast_context_for_local_models():
+    rows = [
+        {
+            "step": step,
+            "prediction": float(step),
+            "p10": float(step - 1),
+            "p50": float(step),
+            "p90": float(step + (100 if step == 80 else 1)),
+        }
+        for step in range(1, 97)
+    ]
+    context = AgentContext(
+        summary={"peak_step": 78},
+        forecast_rows=rows,
+        comparison_rows=[],
+        recent_load_rows=[],
+    )
+
+    payload = _compact_context_payload(context)
+    compact_steps = [row["step"] for row in payload["forecast_rows"]]
+
+    assert payload["forecast_row_count"] == 96
+    assert len(payload["forecast_rows"]) <= 24
+    assert 1 in compact_steps
+    assert 96 in compact_steps
+    assert 78 in compact_steps
+    assert 80 in compact_steps
 
 
 def test_oversized_response_is_rejected(monkeypatch):
